@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import decode_access_token
 from models.seller import Seller
-from service.seller import get_seller_by_id
+from services.seller_service import get_seller_by_id
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 async def get_current_seller(token: str = Depends(oauth2_scheme),

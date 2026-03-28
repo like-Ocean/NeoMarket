@@ -1,13 +1,14 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
 from uuid import UUID
 from datetime import datetime
+from pydantic_extra_types.phone_numbers import PhoneNumber
 
 
 class SellerCreate(BaseModel):
     email: EmailStr
     password: str
     company_name: str
-    phone: str | None = None
+    phone: PhoneNumber | None = None
 
 
 class SellerUpdate(BaseModel):

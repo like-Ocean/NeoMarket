@@ -31,9 +31,12 @@ async def create_seller(db: AsyncSession, data: SellerCreate) -> Seller:
 async def update_seller(db: AsyncSession, seller: Seller, data: SellerUpdate) -> Seller:
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(seller, field, value)
-    await db.flush()
+    await db.commit()
+    await db.refresh(seller)
     return seller
 
 
+# TODO: сделать флаг is_deleted для того чтобы не удалять пользователей
 async def delete_seller(db: AsyncSession, seller: Seller) -> None:
     await db.delete(seller)
+    await db.commit()

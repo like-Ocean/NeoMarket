@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from models.seller import Seller
 from models.refresh_token import RefreshToken
 from schemas.auth import LoginRequest, TokenResponse
@@ -11,7 +11,7 @@ from core.security import (
     generate_refresh_token, hash_refresh_token,
 )
 from core.config import settings
-from service.seller import get_seller_by_email, get_seller_by_id, create_seller
+from services.seller_service import get_seller_by_email, get_seller_by_id, create_seller
 
 
 async def register(db: AsyncSession, data: SellerCreate) -> Seller:
@@ -21,12 +21,17 @@ async def register(db: AsyncSession, data: SellerCreate) -> Seller:
             status_code=status.HTTP_409_CONFLICT,
             detail="Продавец с таким email уже существует",
         )
-    return await create_seller(db, data)
+
+    new_seller = await create_seller(db, data)
+    await db.commit()
+    await db.refresh(new_seller)
+
+    return new_seller
 
 
-async def login(db: AsyncSession, data: LoginRequest) -> TokenResponse:
-    seller = await get_seller_by_email(db, data.email)
-    if not seller or not verify_password(data.password, seller.password_hash):
+async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
+    seller = await get_seller_by_email(db, email)
+    if not seller or not verify_password(password, seller.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
@@ -53,7 +58,7 @@ async def refresh_tokens(db: AsyncSession, raw_token: str) -> TokenResponse:
         )
 
     db_token.revoked = True
-    await db.flush()
+    await db.commit()
 
     seller = await get_seller_by_id(db, db_token.seller_id)
     return await _issue_tokens(db, seller)
@@ -69,13 +74,13 @@ async def logout(db: AsyncSession, raw_token: str) -> None:
 
     if db_token:
         db_token.revoked = True
-        await db.flush()
+        await db.commit()
 
 
 async def _issue_tokens(db: AsyncSession, seller: Seller) -> TokenResponse:
     access_token = create_access_token(str(seller.id))
-
     raw_refresh = generate_refresh_token()
+
     db.add(RefreshToken(
         seller_id=seller.id,
         token_hash=hash_refresh_token(raw_refresh),
@@ -83,9 +88,23 @@ async def _issue_tokens(db: AsyncSession, seller: Seller) -> TokenResponse:
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         ),
     ))
-    await db.flush()
+
+    result = await db.execute(
+        select(RefreshToken.id)
+        .where(RefreshToken.seller_id == seller.id)
+        .order_by(RefreshToken.created_at.asc())
+    )
+    all_token_ids = result.scalars().all()
+    if len(all_token_ids) > 5:
+        ids_to_delete = all_token_ids[:len(all_token_ids) - 5]
+        await db.execute(
+            delete(RefreshToken).where(RefreshToken.id.in_(ids_to_delete))
+        )
+
+    await db.commit()
 
     return TokenResponse(
         access_token=access_token,
         refresh_token=raw_refresh,
     )
+

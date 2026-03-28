@@ -9,7 +9,7 @@ from core.database import engine, Base
 from core.config import settings
 from routers import routes
 
-
+# uv pip uninstall to_remove_something
 load_dotenv()
 
 
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Education Reviews Platform",
+    title="NEO Market",
     version="1.0.0",
     lifespan=lifespan,
     debug=settings.DEBUG

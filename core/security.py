@@ -2,18 +2,21 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 from core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8')
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    password_byte = plain_password.encode('utf-8')
+    hashed_byte = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_byte, hashed_byte)
 
 
 def create_access_token(seller_id: str) -> str:
@@ -29,7 +32,6 @@ def create_access_token(seller_id: str) -> str:
 
 
 def decode_access_token(token: str) -> str:
-    """Возвращает seller_id или выбрасывает JWTError"""
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
 
     if payload.get("type") != "access":
@@ -43,10 +45,8 @@ def decode_access_token(token: str) -> str:
 
 
 def generate_refresh_token() -> str:
-    """случайный токен — просто случайная строка"""
     return secrets.token_urlsafe(64)
 
 
 def hash_refresh_token(token: str) -> str:
-    """Храним хэш, не сам токен"""
     return hashlib.sha256(token.encode()).hexdigest()
