@@ -9,7 +9,6 @@ from core.database import engine, Base
 from core.config import settings
 from routers import routes
 
-# uv pip uninstall to_remove_something
 load_dotenv()
 
 
