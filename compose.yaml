@@ -21,7 +21,7 @@ services:
     container_name: b2b_app
     env_file: .env
     ports:
-      - "${APP_PORT}:4000"
+      - "${APP_PORT}:${APP_PORT}"
     environment:
       DB_HOST: b2b_postgresql
     depends_on:
