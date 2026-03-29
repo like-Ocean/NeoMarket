@@ -16,9 +16,9 @@ services:
       - "${DB_PORT}:5432"
 
   # ── App ───────────────────────────────────────────────────
-  fastapi:
+  b2b_app:
     build: .
-    container_name: app
+    container_name: b2b_app
     env_file: .env
     ports:
       - "${APP_PORT}:4000"
