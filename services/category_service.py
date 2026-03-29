@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 from models.category import Category
+from models.product import Product
 from schemas.category import CategoryCreate, CategoryUpdate
 
 
@@ -68,5 +69,17 @@ async def update_category(db: AsyncSession, category: Category, data: CategoryUp
 
 
 async def delete_category(db: AsyncSession, category: Category):
+    product_result = await db.execute(
+        select(Product.id)
+        .where(Product.category_id == category.id)
+        .limit(1)
+    )
+    has_products = product_result.scalar_one_or_none()
+    if has_products:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Категория содержит товары и не может быть удалена",
+        )
+
     await db.delete(category)
     await db.commit()
