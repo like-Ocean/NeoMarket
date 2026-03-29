@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
-from models.seller import Seller
+from models import Seller
 from schemas.seller import SellerCreate, SellerUpdate
 from core.security import hash_password
 

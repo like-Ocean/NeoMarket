@@ -16,12 +16,13 @@ product_router = APIRouter(prefix="/products", tags=["Products"])
     summary="Список товаров",
 )
 async def get_products(
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = 20, offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(get_current_seller),
+    current_seller: Seller = Depends(get_current_seller),
 ):
-    return await product_service.get_products(db, limit, offset)
+    return await product_service.get_products(
+        db, current_seller.id, limit, offset
+    )
 
 
 @product_router.post(
@@ -44,17 +45,12 @@ async def create_product(
     summary="Получить товар",
 )
 async def get_product(
-    product_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(get_current_seller),
+    product_id: UUID, db: AsyncSession = Depends(get_db),
+    current_seller: Seller = Depends(get_current_seller),
 ):
-    product = await product_service.get_product_by_id(db, product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
-        )
-    return product
+    return await product_service.get_product_by_id(
+        db, product_id, seller_id=current_seller.id
+    )
 
 
 @product_router.patch(

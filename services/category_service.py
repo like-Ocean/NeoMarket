@@ -2,8 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
-from models.category import Category
-from models.product import Product
+from models import Category, Product
 from schemas.category import CategoryCreate, CategoryUpdate
 
 
