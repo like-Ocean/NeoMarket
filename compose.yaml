@@ -1,0 +1,32 @@
+services:
+  # ── Database ──────────────────────────────────────────────
+  b2b_postgresql:
+    env_file: .env
+    image: postgres:latest
+    container_name: "b2b_database"
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ./b2b_postgres_data:/var/lib/postgresql
+
+    ports:
+      - "${DB_PORT}:5432"
+
+  # ── App ───────────────────────────────────────────────────
+  b2b_app:
+    build: .
+    container_name: b2b_app
+    env_file: .env
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    environment:
+      DB_HOST: b2b_postgresql
+    depends_on:
+      - b2b_postgresql
+    restart: unless-stopped
+
+volumes:
+  b2b_postgres_data:
