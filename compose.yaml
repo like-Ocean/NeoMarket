@@ -1,17 +1,16 @@
 services:
   # ── Database ──────────────────────────────────────────────
-  postgresql:
+  b2b_postgresql:
     env_file: .env
     image: postgres:latest
-    container_name: "database"
+    container_name: "b2b_database"
     restart: always
-    networks: [internal-net]
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ./postgres_data:/var/lib/postgresql
+      - ./b2b_postgres_data:/var/lib/postgresql
 
     ports:
       - "${DB_PORT}:5432"
@@ -24,10 +23,10 @@ services:
     ports:
       - "${APP_PORT}:4000"
     environment:
-      DB_HOST: postgresql
+      DB_HOST: b2b_postgresql
     depends_on:
-      - postgresql
+      - b2b_postgresql
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  b2b_postgres_data:
