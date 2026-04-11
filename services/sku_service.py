@@ -1,0 +1,131 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from fastapi import HTTPException, status
+from models.sku import SKU
+from models.sku_image import SKUImage
+from models.sku_characteristic import SKUCharacteristic
+from models.product import Product
+from models.seller import Seller
+from schemas.sku import SKUCreate, SKUUpdate
+
+
+async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
+    result = await db.execute(
+        select(SKU)
+        .options(
+            selectinload(SKU.images),
+            selectinload(SKU.characteristics),
+        )
+        .where(SKU.id == sku_id)
+    )
+    sku = result.scalar_one_or_none()
+    if not sku:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SKU не найден",
+        )
+
+    if seller_id is not None:
+        product_result = await db.execute(
+            select(Product).where(Product.id == sku.product_id)
+        )
+        product = product_result.scalar_one_or_none()
+        if not product or product.seller_id != seller_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Нет доступа к этому SKU",
+            )
+
+    return sku
+
+
+async def get_skus_by_product(db: AsyncSession, product_id, seller_id) -> list[SKU]:
+    product_result = await db.execute(
+        select(Product).where(Product.id == product_id)
+    )
+    product = product_result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден",
+        )
+    if product.seller_id != seller_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Нет доступа к товару",
+        )
+
+    result = await db.execute(
+        select(SKU)
+        .options(
+            selectinload(SKU.images),
+            selectinload(SKU.characteristics),
+        )
+        .where(SKU.product_id == product_id)
+    )
+
+    return result.scalars().all()
+
+
+async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
+    product_result = await db.execute(
+        select(Product).where(Product.id == data.product_id)
+    )
+    product = product_result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден",
+        )
+    if product.seller_id != seller.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Нет доступа к товару",
+        )
+
+    sku = SKU(
+        product_id=data.product_id,
+        name=data.name,
+        price=data.price,
+        stock_quantity=0,
+        article=data.article,
+    )
+    db.add(sku)
+    await db.flush()
+
+    for image in data.images:
+        db.add(SKUImage(
+            sku_id=sku.id,
+            url=image.url,
+            ordering=image.ordering,
+        ))
+
+    for characteristic in data.characteristics:
+        db.add(SKUCharacteristic(
+            sku_id=sku.id,
+            name=characteristic.name,
+            value=characteristic.value,
+        ))
+
+    await db.commit()
+
+    return await get_sku_by_id(db, sku.id)
+
+
+async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) -> SKU:
+    sku = await get_sku_by_id(db, sku_id, seller_id=seller.id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(sku, field, value)
+
+    await db.commit()
+
+    return await get_sku_by_id(db, sku.id)
+
+
+async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
+    sku = await get_sku_by_id(db, sku_id, seller_id=seller.id)
+    await db.delete(sku)
+    
+    await db.commit()

@@ -10,8 +10,7 @@ from services.seller_service import get_seller_by_id
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-async def get_current_seller(token: str = Depends(oauth2_scheme),
-                             db: AsyncSession = Depends(get_db)) -> Seller:
+async def get_current_seller(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> Seller:
     try:
         seller_id = decode_access_token(token)
     except JWTError:

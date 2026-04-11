@@ -90,23 +90,8 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
     return await get_product_by_id(db, product.id)
 
 
-async def update_product(
-        db: AsyncSession, product_id,
-        seller: Seller, data: ProductUpdate,
-) -> Product:
-    product = await get_product_by_id(db, product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
-        )
-
-    if product.seller_id != seller.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к товару",
-        )
-
+async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
+    product = await get_product_by_id(db, product_id, seller_id=seller.id)
     if data.category_id is not None:
         category_result = await db.execute(
             select(Category).where(Category.id == data.category_id)
@@ -125,19 +110,8 @@ async def update_product(
     return await get_product_by_id(db, product.id)
 
 
-async def delete_product(db: AsyncSession, product_id, seller: Seller) -> None:
-    product = await get_product_by_id(db, product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
-        )
-
-    if product.seller_id != seller.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к товару",
-        )
+async def delete_product(db: AsyncSession, product_id, seller: Seller):
+    product = await get_product_by_id(db, product_id, seller_id=seller.id)
 
     await db.delete(product)
     await db.commit()

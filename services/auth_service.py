@@ -2,9 +2,10 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from models.seller import Seller
+from sqlalchemy.exc import IntegrityError
 from models.refresh_token import RefreshToken
-from schemas.auth import LoginRequest, TokenResponse
+from models.seller import Seller
+from schemas.auth import TokenResponse
 from schemas.seller import SellerCreate
 from core.security import (
     verify_password, create_access_token,
@@ -23,7 +24,17 @@ async def register(db: AsyncSession, data: SellerCreate) -> Seller:
         )
 
     new_seller = await create_seller(db, data)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "unique" in str(exc.orig).lower() or "sellers_email_key" in str(exc.orig):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Продавец с таким email уже существует",
+            ) from exc
+        raise
+
     await db.refresh(new_seller)
 
     return new_seller

@@ -1,8 +1,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from models import Seller
 from schemas.seller import SellerCreate, SellerUpdate
 from core.security import hash_password
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
 
 
 async def get_seller_by_id(db: AsyncSession, seller_id) -> Seller | None:
@@ -11,14 +15,20 @@ async def get_seller_by_id(db: AsyncSession, seller_id) -> Seller | None:
 
 
 async def get_seller_by_email(db: AsyncSession, email: str) -> Seller | None:
-    result = await db.execute(select(Seller).where(Seller.email == email))
+    normalized_email = normalize_email(email)
+    result = await db.execute(
+        select(Seller).where(func.lower(Seller.email) == normalized_email)
+    )
     return result.scalar_one_or_none()
 
 
 async def create_seller(db: AsyncSession, data: SellerCreate) -> Seller:
     seller = Seller(
-        email=data.email,
+        email=normalize_email(str(data.email)),
         password_hash=hash_password(data.password),
+        first_name=data.first_name,
+        last_name=data.last_name,
+        middle_name=data.middle_name,
         company_name=data.company_name,
         phone=data.phone,
     )
