@@ -15,20 +15,6 @@ from services import product_service, image_service
 product_router = APIRouter(prefix="/products", tags=["Products"])
 
 
-@product_router.get(
-    "", response_model=ProductListResponse,
-    summary="Список товаров",
-)
-async def get_products(
-    limit: int = 20, offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
-):
-    return await product_service.get_products(
-        db, current_seller.id, limit, offset
-    )
-
-
 @product_router.post(
     "", response_model=ProductResponse,
     status_code=status.HTTP_201_CREATED,
@@ -41,9 +27,18 @@ async def create_product(
     return await product_service.create_product(db, current_seller, data)
 
 
+@product_router.get("/my", response_model=ProductListResponse)
+async def get_my_products(
+    limit: int = 20, offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_seller: Seller = Depends(get_current_seller),
+):
+    return await product_service.get_products_by_seller(db, current_seller.id, limit, offset)
+
+
 @product_router.get(
     "/{product_id}", response_model=ProductResponse,
-    summary="Получить товар",
+    summary="Получить товар по ID (для продавца)",
 )
 async def get_product(
     product_id: UUID, db: AsyncSession = Depends(get_db),

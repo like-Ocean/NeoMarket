@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Internal API
+    INTERNAL_API_TOKEN: str
+
     # Admin
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str

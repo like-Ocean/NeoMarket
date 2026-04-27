@@ -4,7 +4,9 @@ from sqlalchemy.orm import selectinload
 from uuid import UUID
 from fastapi import HTTPException, status
 from models import Category, Product, ProductCharacteristic, ProductImage, Seller
+from models.product import ProductStatus
 from schemas.product import ProductCreate, ProductUpdate
+from services.public_service import get_product_by_id_public
 
 
 async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Product | None:
@@ -33,15 +35,14 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
     return product
 
 
-async def get_products(db: AsyncSession, seller_id: UUID, limit: int = 20, offset: int = 0) -> dict:
+async def get_products(db: AsyncSession, limit: int = 20, offset: int = 0) -> dict:
     total_result = await db.execute(
-        select(func.count(Product.id)).where(Product.seller_id == seller_id)
+        select(func.count(Product.id))
     )
     total = total_result.scalar_one()
 
     result = await db.execute(
         select(Product)
-        .where(Product.seller_id == seller_id)
         .order_by(Product.created_at.desc())
         .limit(limit).offset(offset)
     )
@@ -50,6 +51,25 @@ async def get_products(db: AsyncSession, seller_id: UUID, limit: int = 20, offse
         "total": total,
         "items": result.scalars().all(),
     }
+
+
+async def get_products_by_seller(
+    db: AsyncSession, seller_id: UUID, 
+    limit: int = 20, offset: int = 0
+) -> dict:
+    total_result = await db.execute(
+        select(func.count(Product.id)).where(Product.seller_id == seller_id)
+    )
+    total = total_result.scalar_one()
+    
+    result = await db.execute(
+        select(Product)
+        .where(Product.seller_id == seller_id)
+        .order_by(Product.created_at.desc())
+        .limit(limit).offset(offset)
+    )
+    
+    return {"total": total, "items": result.scalars().all()}
 
 
 async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) -> Product:
@@ -115,3 +135,19 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
 
     await db.delete(product)
     await db.commit()
+
+
+async def get_similar_products(db: AsyncSession,  product_id: UUID, limit: int = 10) -> list[Product]:
+    product = await get_product_by_id_public(db, product_id)
+    if not product:
+        return []
+    
+    result = await db.execute(
+        select(Product)
+        .where(Product.category_id == product.category_id)
+        .where(Product.id != product_id)
+        .where(Product.status == ProductStatus.MODERATED)
+        .order_by(Product.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()

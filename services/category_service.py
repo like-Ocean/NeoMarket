@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import UUID, select
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 from models import Category, Product
@@ -9,7 +9,10 @@ from schemas.category import CategoryCreate, CategoryUpdate
 async def get_category_by_id(db: AsyncSession, category_id) -> Category | None:
     result = await db.execute(
         select(Category)
-        .options(selectinload(Category.children))
+        .options(
+            selectinload(Category.children),
+            selectinload(Category.parent)
+        )
         .where(Category.id == category_id)
     )
     return result.scalar_one_or_none()
@@ -82,3 +85,40 @@ async def delete_category(db: AsyncSession, category: Category):
 
     await db.delete(category)
     await db.commit()
+
+
+async def get_categories_tree(db: AsyncSession, parent_id: UUID | None = None) -> list[dict]:
+    query = select(Category).options(selectinload(Category.children))
+    if parent_id is None:
+        query = query.where(Category.parent_id == None)
+    else:
+        query = query.where(Category.parent_id == parent_id)
+    
+    query = query.order_by(Category.name)
+    result = await db.execute(query)
+    categories = result.scalars().all()
+    
+    tree = []
+    for category in categories:
+        node = {
+            "id": str(category.id),
+            "name": category.name,
+            "children": await get_categories_tree(db, category.id)
+        }
+        tree.append(node)
+    
+    return tree
+
+
+async def get_breadcrumbs(db: AsyncSession, category_id: UUID) -> list[dict]:
+    breadcrumbs = []
+    current = await get_category_by_id(db, category_id)
+    
+    while current:
+        breadcrumbs.insert(0, {
+            "id": str(current.id),
+            "name": current.name
+        })
+        current = current.parent
+    
+    return breadcrumbs
