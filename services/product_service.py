@@ -146,7 +146,7 @@ async def get_similar_products(db: AsyncSession,  product_id: UUID, limit: int =
         select(Product)
         .where(Product.category_id == product.category_id)
         .where(Product.id != product_id)
-        .where(Product.status == ProductStatus.MODERATED)
+        # .where(Product.status == ProductStatus.MODERATED)
         .order_by(Product.created_at.desc())
         .limit(limit)
     )

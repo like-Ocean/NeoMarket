@@ -13,7 +13,10 @@ async def get_products_public(
     max_price: int | None = None,
     seller_id: UUID | None = None,
 ) -> dict:
-    query = select(Product).where(Product.status == ProductStatus.MODERATED)
+    # TODO: сделать вот такой запрос:
+    # query = select(Product).where(Product.status == ProductStatus.MODERATED)
+    # сейчас модерации нет, так что выводим тупа всё созданное
+    query = select(Product)
     if category_id:
         query = query.where(Product.category_id == category_id)
     
@@ -74,7 +77,7 @@ async def get_product_by_id_public(db: AsyncSession, product_id: UUID) -> Produc
             ),
         )
         .where(Product.id == product_id)
-        .where(Product.status == ProductStatus.MODERATED)
+        # .where(Product.status == ProductStatus.MODERATED)
     )
     return result.scalar_one_or_none()
 
