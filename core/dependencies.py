@@ -39,6 +39,7 @@ async def get_current_seller_optional(
         return None
     if not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный формат Authorization")
+    
     token = authorization.split(" ", 1)[1]
     try:
         seller_id = decode_access_token(token)
@@ -69,3 +70,11 @@ def require_moderation_key(x_service_key: str = Depends(require_service_key)) ->
 def require_b2c_key(x_service_key: str = Depends(require_service_key)) -> None:
     if x_service_key != settings.B2C_SERVICE_KEY:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
+
+
+def require_internal_token(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> None:
+    if not x_internal_token or x_internal_token != settings.INTERNAL_API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Неверный внутренний токен",
+        )

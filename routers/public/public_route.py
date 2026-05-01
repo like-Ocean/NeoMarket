@@ -2,7 +2,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from schemas.category import CategoryWithChildrenResponse, CategoryResponse, CategoryTreeResponse
+from schemas.category import CategoryResponse, CategoryTreeResponse
 from schemas.product import ProductPublicResponse, ProductPublicShortResponse, ProductPublicListResponse
 from schemas.sku import SKUPublicResponse
 from services import category_service, public_service, product_service

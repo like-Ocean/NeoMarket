@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from core.dependencies import require_b2c_key
+from core.dependencies import require_b2c_key, require_internal_token
 from schemas.inventory import InventoryRequest
 from services import inventory_service
 
-inventory_router = APIRouter(prefix="", tags=["Inventory"])
+inventory_router = APIRouter(
+    prefix="",
+    tags=["Inventory"],
+    dependencies=[Depends(require_internal_token)],
+)
 
 
 @inventory_router.post("/reserve")

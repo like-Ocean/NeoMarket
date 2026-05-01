@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from models.sku_image import SKUImage
     from models.sku_characteristic import SKUCharacteristic
     from models.invoice import InvoiceItem
+    from models.stock_reservation import StockReservation
 
 
 class SKU(Base, TimestampMixin):
@@ -45,4 +46,7 @@ class SKU(Base, TimestampMixin):
         back_populates="sku", cascade="all, delete-orphan"
     )
     invoice_items: Mapped[list["InvoiceItem"]] = relationship(back_populates="sku")
+    reservations: Mapped[list["StockReservation"]] = relationship(
+        back_populates="sku", cascade="all, delete-orphan"
+    )
 

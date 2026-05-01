@@ -5,8 +5,9 @@ from .product import product_route
 from .sku import sku_route
 from .invoice import invoice_route
 from .upload import upload_route
-from .public import public_router
+from .public import public_route
 from .inventory import inventory_route
+from .stock import stock_route
 
 routes = [
     auth_router,
@@ -16,6 +17,7 @@ routes = [
     sku_route.sku_router,
     invoice_route.invoice_router,
     upload_route.upload_router,
-    public_router.public_router,
+    public_route.public_router,
     inventory_route.inventory_router,
+    stock_route.stock_router,
 ]

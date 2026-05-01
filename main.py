@@ -34,10 +34,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="NEO Market",
-    version="1.0.0",
-    lifespan=lifespan,
-    debug=settings.DEBUG
+    title="NEO Market", version="1.0.0",
+    lifespan=lifespan, debug=settings.DEBUG
 )
 
 app.add_middleware(
@@ -50,7 +48,7 @@ app.add_middleware(
 
 
 for router in routes:
-    app.include_router(router, prefix="/api/v1")
+    app.include_router(router, prefix="/api")
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

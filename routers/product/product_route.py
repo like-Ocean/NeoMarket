@@ -3,7 +3,7 @@ from typing import Union
 from fastapi import APIRouter, Depends, status, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from core.dependencies import get_current_seller, get_current_seller_optional
+from core.dependencies import get_current_seller, get_current_seller_optional, require_internal_token
 from core.config import settings
 from models.seller import Seller
 from schemas.image import ProductImageCreateRequest, ProductImageUpdateRequest
@@ -127,6 +127,7 @@ async def delete_product(
 async def product_events(
     data: ProductEventRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_internal_token),
     x_service_key: str = Header(alias="X-Service-Key"),
 ):
     if x_service_key != settings.MOD_SERVICE_KEY:
