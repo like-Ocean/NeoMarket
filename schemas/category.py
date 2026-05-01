@@ -22,5 +22,12 @@ class CategoryResponse(BaseModel):
     created_at: datetime
 
 
+class CategoryTreeResponse(BaseModel):
+    id: UUID
+    name: str
+    children: list["CategoryTreeResponse"] = []
+
+
+
 class CategoryWithChildrenResponse(CategoryResponse):
     children: list["CategoryResponse"] = []

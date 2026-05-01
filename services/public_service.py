@@ -13,10 +13,14 @@ async def get_products_public(
     max_price: int | None = None,
     seller_id: UUID | None = None,
 ) -> dict:
-    # TODO: сделать вот такой запрос:
-    # query = select(Product).where(Product.status == ProductStatus.MODERATED)
-    # сейчас модерации нет, так что выводим тупа всё созданное
-    query = select(Product)
+    query = (
+        select(Product)
+        .join(SKU, SKU.product_id == Product.id)
+        # .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.deleted == False)
+        .where(SKU.active_quantity > 0)
+        .distinct()
+    )
     if category_id:
         query = query.where(Product.category_id == category_id)
     
@@ -78,8 +82,14 @@ async def get_product_by_id_public(db: AsyncSession, product_id: UUID) -> Produc
         )
         .where(Product.id == product_id)
         # .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.deleted == False)
     )
-    return result.scalar_one_or_none()
+    product = result.scalar_one_or_none()
+    if not product:
+        return None
+    
+    product.skus = [sku for sku in product.skus if sku.active_quantity > 0]
+    return product
 
 
 async def get_sku_by_id_public(db: AsyncSession, sku_id: UUID) -> SKU | None:
@@ -96,7 +106,9 @@ async def get_sku_by_id_public(db: AsyncSession, sku_id: UUID) -> SKU | None:
     if not sku:
         return None
 
-    if sku.product.status != ProductStatus.MODERATED:
+    if sku.product.status != ProductStatus.MODERATED or sku.product.deleted:
+        return None
+    if sku.active_quantity <= 0:
         return None
     
     return sku

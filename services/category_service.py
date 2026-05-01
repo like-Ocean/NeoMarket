@@ -117,7 +117,9 @@ async def get_breadcrumbs(db: AsyncSession, category_id: UUID) -> list[dict]:
     while current:
         breadcrumbs.insert(0, {
             "id": str(current.id),
-            "name": current.name
+            "name": current.name,
+            "parent_id": str(current.parent_id) if current.parent_id else None,
+            "created_at": current.created_at
         })
         current = current.parent
     

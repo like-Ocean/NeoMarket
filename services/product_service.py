@@ -7,6 +7,8 @@ from models import Category, Product, ProductCharacteristic, ProductImage, Selle
 from models.product import ProductStatus
 from schemas.product import ProductCreate, ProductUpdate
 from services.public_service import get_product_by_id_public
+from services.outbox_service import add_outbox_event
+from models.sku import SKU
 
 
 async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Product | None:
@@ -28,8 +30,8 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
 
     if seller_id is not None and product.seller_id != seller_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к товару",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден",
         )
 
     return product
@@ -112,6 +114,11 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
 
 async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
     product = await get_product_by_id(db, product_id, seller_id=seller.id)
+    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактирование товара запрещено",
+        )
     if data.category_id is not None:
         category_result = await db.execute(
             select(Category).where(Category.id == data.category_id)
@@ -123,8 +130,20 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
                 detail="Категория не найдена",
             )
 
+    old_status = product.status
+
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(product, field, value)
+
+    if old_status in {ProductStatus.MODERATED, ProductStatus.BLOCKED}:
+        product.status = ProductStatus.ON_MODERATION
+        await add_outbox_event(
+            db=db,
+            event_type="EDITED",
+            aggregate_type="PRODUCT",
+            aggregate_id=product.id,
+            payload={"product_id": str(product.id)},
+        )
 
     await db.commit()
     return await get_product_by_id(db, product.id)
@@ -133,7 +152,34 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
 async def delete_product(db: AsyncSession, product_id, seller: Seller):
     product = await get_product_by_id(db, product_id, seller_id=seller.id)
 
-    await db.delete(product)
+    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактирование товара запрещено",
+        )
+
+    skus_result = await db.execute(
+        select(SKU.id).where(SKU.product_id == product.id)
+    )
+    sku_ids = [str(sid) for sid in skus_result.scalars().all()]
+
+    product.deleted = True
+
+    await add_outbox_event(
+        db=db,
+        event_type="DELETED",
+        aggregate_type="PRODUCT",
+        aggregate_id=product.id,
+        payload={"product_id": str(product.id)},
+    )
+    await add_outbox_event(
+        db=db,
+        event_type="PRODUCT_DELETED",
+        aggregate_type="PRODUCT",
+        aggregate_id=product.id,
+        payload={"product_id": str(product.id), "sku_ids": sku_ids},
+    )
+
     await db.commit()
 
 

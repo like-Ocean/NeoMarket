@@ -25,8 +25,8 @@ async def get_invoice_by_id(db: AsyncSession, invoice_id, seller_id=None) -> Inv
 
     if seller_id is not None and invoice.seller_id != seller_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к накладной",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Накладная не найдена",
         )
 
     return invoice
@@ -72,8 +72,8 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
         product = product_result.scalar_one_or_none()
         if not product or product.seller_id != seller.id:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"SKU {item.sku_id} не принадлежит вашим товарам",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"SKU {item.sku_id} не найден",
             )
 
     invoice = Invoice(
@@ -114,7 +114,7 @@ async def accept_invoice(db: AsyncSession, invoice_id, seller: Seller) -> Invoic
                 detail=f"SKU {item.sku_id} не найден",
             )
 
-        sku.stock_quantity += item.quantity
+        sku.active_quantity += item.quantity
 
     invoice.status = InvoiceStatus.ACCEPTED
     await db.commit()

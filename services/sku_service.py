@@ -1,13 +1,14 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 from models.sku import SKU
 from models.sku_image import SKUImage
 from models.sku_characteristic import SKUCharacteristic
-from models.product import Product
+from models.product import Product, ProductStatus
 from models.seller import Seller
 from schemas.sku import SKUCreate, SKUUpdate
+from services.outbox_service import add_outbox_event
 
 
 async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
@@ -33,8 +34,8 @@ async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
         product = product_result.scalar_one_or_none()
         if not product or product.seller_id != seller_id:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Нет доступа к этому SKU",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="SKU не найден",
             )
 
     return sku
@@ -53,8 +54,8 @@ async def get_skus_by_product(db: AsyncSession, product_id, seller_id) -> list[S
         )
     if product.seller_id != seller_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к товару",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден",
         )
 
     result = await db.execute(
@@ -81,15 +82,27 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         )
     if product.seller_id != seller.id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к товару",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден",
         )
+    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактирование товара запрещено",
+        )
+
+    count_result = await db.execute(
+        select(func.count(SKU.id)).where(SKU.product_id == product.id)
+    )
+    existing_skus = count_result.scalar_one()
 
     sku = SKU(
         product_id=data.product_id,
         name=data.name,
         price=data.price,
-        stock_quantity=0,
+        cost_price=data.cost_price,
+        active_quantity=0,
+        reserved_quantity=0,
         article=data.article,
     )
     db.add(sku)
@@ -109,6 +122,16 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
             value=characteristic.value,
         ))
 
+    if existing_skus == 0:
+        product.status = ProductStatus.ON_MODERATION
+        await add_outbox_event(
+            db=db,
+            event_type="CREATED",
+            aggregate_type="PRODUCT",
+            aggregate_id=product.id,
+            payload={"product_id": str(product.id)},
+        )
+
     await db.commit()
 
     return await get_sku_by_id(db, sku.id)
@@ -116,16 +139,58 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
 
 async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) -> SKU:
     sku = await get_sku_by_id(db, sku_id, seller_id=seller.id)
+
+    product_result = await db.execute(
+        select(Product).where(Product.id == sku.product_id)
+    )
+    product = product_result.scalar_one_or_none()
+    if not product or product.seller_id != seller.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
+
+    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактирование товара запрещено",
+        )
+
+    old_status = product.status
+
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(sku, field, value)
 
-    await db.commit()
+    if old_status in {ProductStatus.MODERATED, ProductStatus.BLOCKED}:
+        product.status = ProductStatus.ON_MODERATION
+        await add_outbox_event(
+            db=db,
+            event_type="EDITED",
+            aggregate_type="PRODUCT",
+            aggregate_id=product.id,
+            payload={"product_id": str(product.id)},
+        )
 
+    await db.commit()
     return await get_sku_by_id(db, sku.id)
 
 
 async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
     sku = await get_sku_by_id(db, sku_id, seller_id=seller.id)
+    product_result = await db.execute(
+        select(Product).where(Product.id == sku.product_id)
+    )
+    product = product_result.scalar_one_or_none()
+    if not product or product.seller_id != seller.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
+
+    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактирование товара запрещено",
+        )
+    if sku.reserved_quantity > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя удалить SKU с резервом",
+        )
     await db.delete(sku)
-    
+
     await db.commit()

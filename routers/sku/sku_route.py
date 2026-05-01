@@ -38,7 +38,7 @@ async def get_sku(
 
 
 @sku_router.post(
-    "/create", response_model=SKUResponse,
+    "", response_model=SKUResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Создать SKU",
 )

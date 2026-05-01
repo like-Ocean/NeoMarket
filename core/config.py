@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -27,7 +28,17 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Internal API
-    INTERNAL_API_TOKEN: str
+    INTERNAL_API_TOKEN: str | None = None
+
+    # Service keys
+    B2C_SERVICE_KEY: str = ""
+    MOD_SERVICE_KEY: str = ""
+    B2B_TO_MOD_KEY: str = ""
+    B2B_TO_B2C_KEY: str = ""
+
+    # Service URLs
+    MODERATION_SERVICE_URL: str = ""
+    B2C_SERVICE_URL: str = ""
 
     # Admin
     ADMIN_EMAIL: str

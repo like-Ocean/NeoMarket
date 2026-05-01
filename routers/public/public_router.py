@@ -2,30 +2,27 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from schemas.category import CategoryWithChildrenResponse, CategoryResponse
-from schemas.product import ProductResponse, ProductShortResponse, ProductListResponse
-from schemas.sku import SKUResponse
+from schemas.category import CategoryWithChildrenResponse, CategoryResponse, CategoryTreeResponse
+from schemas.product import ProductPublicResponse, ProductPublicShortResponse, ProductPublicListResponse
+from schemas.sku import SKUPublicResponse
 from services import category_service, public_service, product_service
 
 public_router = APIRouter(prefix="/public", tags=["Public Catalog"])
 
 
-@public_router.get("/categories/tree", response_model=list[CategoryWithChildrenResponse])
-async def get_categories_tree(
-    db: AsyncSession = Depends(get_db),
-):
+@public_router.get("/categories/tree", response_model=list[CategoryTreeResponse])
+async def get_categories_tree(db: AsyncSession = Depends(get_db)):
     return await category_service.get_categories_tree(db)
 
 
 @public_router.get("/categories/{category_id}/breadcrumbs", response_model=list[CategoryResponse])
 async def get_breadcrumbs(
-    category_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    category_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     return await category_service.get_breadcrumbs(db, category_id)
 
 
-@public_router.get("/products", response_model=ProductListResponse)
+@public_router.get("/products", response_model=ProductPublicListResponse)
 async def get_products_public(
     category_id: UUID | None = None,
     search: str | None = None,
@@ -34,7 +31,7 @@ async def get_products_public(
     seller_id: UUID | None = None,
     page: int = Query(1, ge=1, description="Номер страницы"),
     size: int = Query(20, ge=1, le=100, description="Товаров на странице"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     offset = (page - 1) * size
     return await public_service.get_products_public(
@@ -42,14 +39,13 @@ async def get_products_public(
         category_id=category_id,
         search=search, min_price=min_price,
         max_price=max_price,
-        seller_id=seller_id,
+        seller_id=seller_id
     )
 
 
-@public_router.get("/products/{product_id}", response_model=ProductResponse)
+@public_router.get("/products/{product_id}", response_model=ProductPublicResponse)
 async def get_product_public(
-    product_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    product_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     product = await public_service.get_product_by_id_public(db, product_id)
     if not product:
@@ -61,16 +57,16 @@ async def get_product_public(
     return product
 
 
-@public_router.get("/products/{product_id}/similar", response_model=list[ProductShortResponse])
+@public_router.get("/products/{product_id}/similar", response_model=list[ProductPublicShortResponse])
 async def get_similar_products_public(
     product_id: UUID,
     limit: int = Query(10, ge=1, le=50, description="Количество похожих товаров"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await product_service.get_similar_products(db, product_id, limit)
 
 
-@public_router.get("/skus/{sku_id}", response_model=SKUResponse)
+@public_router.get("/skus/{sku_id}", response_model=SKUPublicResponse)
 async def get_sku_public(
     sku_id: UUID,
     db: AsyncSession = Depends(get_db),

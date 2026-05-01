@@ -28,11 +28,15 @@ def create_access_token(seller_id: str) -> str:
         "exp": expire,
         "type": "access",
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    secret = settings.JWT_SECRET if settings.JWT_SECRET else settings.SECRET_KEY
+    algorithm = settings.JWT_ALGORITHM if settings.JWT_ALGORITHM else settings.ALGORITHM
+    return jwt.encode(payload, secret, algorithm=algorithm)
 
 
 def decode_access_token(token: str) -> str:
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    secret = settings.JWT_SECRET if settings.JWT_SECRET else settings.SECRET_KEY
+    algorithm = settings.JWT_ALGORITHM if settings.JWT_ALGORITHM else settings.ALGORITHM
+    payload = jwt.decode(token, secret, algorithms=[algorithm])
 
     if payload.get("type") != "access":
         raise JWTError("Wrong token type")
