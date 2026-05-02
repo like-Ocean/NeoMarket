@@ -11,6 +11,7 @@ class SellerCreate(BaseModel):
     last_name: str
     middle_name: str | None = None
     company_name: str
+    inn: str
     phone: PhoneNumber | None = None
 
     @field_validator("first_name", "last_name")
@@ -29,6 +30,14 @@ class SellerCreate(BaseModel):
         normalized = value.strip()
         if not normalized:
             return None
+        return normalized
+
+    @field_validator("inn")
+    @classmethod
+    def validate_inn(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.isdigit() or len(normalized) not in (10, 12):
+            raise ValueError("ИНН должен содержать 10 или 12 цифр")
         return normalized
 
 
@@ -69,6 +78,7 @@ class SellerResponse(BaseModel):
     last_name: str
     middle_name: str | None
     company_name: str
+    inn: str
     phone: str | None
     created_at: datetime
     updated_at: datetime

@@ -1,15 +1,22 @@
 import json
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
-from models.inbox_event import InboxEvent
+from models.processed_event import ProcessedEvent
 from models.product import Product, ProductStatus
+from models.sku import SKU
 from schemas.events import ProductEventRequest
+from services.outbox_service import add_outbox_event
+from core.config import settings
 
 
 async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> None:
     result = await db.execute(
-        select(InboxEvent).where(InboxEvent.idempotency_key == data.idempotency_key)
+        select(ProcessedEvent).where(
+            ProcessedEvent.sender_service == "moderation",
+            ProcessedEvent.idempotency_key == data.idempotency_key,
+        )
     )
     existing = result.scalar_one_or_none()
     if existing:
@@ -32,17 +39,50 @@ async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> N
         product.blocked = True
         product.moderator_comment = data.moderator_comment
         product.blocking_reason_id = data.blocking_reason_id
+
+        sku_result = await db.execute(
+            select(SKU.id).where(SKU.product_id == product.id)
+        )
+        sku_ids = [str(sku_id) for sku_id in sku_result.scalars().all()]
+
+        await add_outbox_event(
+            db=db,
+            event_type="PRODUCT_BLOCKED",
+            target_url=settings.B2C_SERVICE_URL,
+            payload={
+                "event": "PRODUCT_BLOCKED",
+                "product_id": str(product.id),
+                "sku_ids": sku_ids,
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     elif data.event_type == "HARD_BLOCKED":
         product.status = ProductStatus.HARD_BLOCKED
         product.blocked = True
         product.moderator_comment = data.moderator_comment
         product.blocking_reason_id = data.blocking_reason_id
 
-    db.add(InboxEvent(
+        sku_result = await db.execute(
+            select(SKU.id).where(SKU.product_id == product.id)
+        )
+        sku_ids = [str(sku_id) for sku_id in sku_result.scalars().all()]
+
+        await add_outbox_event(
+            db=db,
+            event_type="PRODUCT_BLOCKED",
+            target_url=settings.B2C_SERVICE_URL,
+            payload={
+                "event": "PRODUCT_BLOCKED",
+                "product_id": str(product.id),
+                "sku_ids": sku_ids,
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    db.add(ProcessedEvent(
+        sender_service="moderation",
         idempotency_key=data.idempotency_key,
-        event_type=data.event_type,
-        aggregate_id=data.product_id,
-        payload=json.dumps(data.model_dump(), ensure_ascii=False),
+        response_cached=json.dumps({"accepted": True}, ensure_ascii=False),
     ))
 
     await db.commit()

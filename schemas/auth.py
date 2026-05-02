@@ -7,9 +7,11 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    user_id: str
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "Bearer"
+    expires_in: int
 
 
 class RefreshRequest(BaseModel):
@@ -18,4 +20,4 @@ class RefreshRequest(BaseModel):
 
 class AccessTokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "Bearer"

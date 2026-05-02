@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from schemas.auth import TokenResponse, RefreshRequest
-from fastapi.security import OAuth2PasswordRequestForm
-from schemas.seller import SellerCreate, SellerResponse
+from schemas.auth import TokenResponse, RefreshRequest, LoginRequest
+from schemas.seller import SellerCreate
 from services import auth_service
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -11,7 +10,7 @@ auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @auth_router.post(
     "/register",
-    response_model=SellerResponse,
+    response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Регистрация продавца",
 )
@@ -24,10 +23,10 @@ async def register(
 
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(
-    data: OAuth2PasswordRequestForm = Depends(),
+    data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    return await auth_service.login(db, data.username, data.password)
+    return await auth_service.login(db, data.email, data.password)
 
 
 @auth_router.post(

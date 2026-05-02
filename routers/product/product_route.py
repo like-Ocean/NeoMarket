@@ -6,7 +6,7 @@ from core.database import get_db
 from core.dependencies import get_current_seller, get_current_seller_optional, require_internal_token
 from core.config import settings
 from models.seller import Seller
-from schemas.image import ProductImageCreateRequest, ProductImageUpdateRequest
+from schemas.image import ProductImageUpdateRequest
 from schemas.product import (
     ProductCreate, ProductResponse,
     ProductListResponse, ProductUpdate, ProductImageResponse,
@@ -147,24 +147,6 @@ async def update_product_image(
 ):
     return await image_service.update_product_image(
         db=db, image_id=image_id,
-        seller_id=current_seller.id,
-        url=data.url, ordering=data.ordering,
-    )
-
-
-@product_router.post(
-    "/{product_id}/images",
-    response_model=ProductImageResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Добавить изображение к товару",
-)
-async def add_product_image(
-    product_id: UUID, data: ProductImageCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
-):
-    return await image_service.add_product_image(
-        db=db, product_id=product_id,
         seller_id=current_seller.id,
         url=data.url, ordering=data.ordering,
     )

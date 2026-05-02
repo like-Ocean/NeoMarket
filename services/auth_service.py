@@ -15,7 +15,7 @@ from core.config import settings
 from services.seller_service import get_seller_by_email, get_seller_by_id, create_seller
 
 
-async def register(db: AsyncSession, data: SellerCreate) -> Seller:
+async def register(db: AsyncSession, data: SellerCreate) -> TokenResponse:
     existing = await get_seller_by_email(db, data.email)
     if existing:
         raise HTTPException(
@@ -37,7 +37,7 @@ async def register(db: AsyncSession, data: SellerCreate) -> Seller:
 
     await db.refresh(new_seller)
 
-    return new_seller
+    return await _issue_tokens(db, new_seller)
 
 
 async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
@@ -115,7 +115,9 @@ async def _issue_tokens(db: AsyncSession, seller: Seller) -> TokenResponse:
     await db.commit()
 
     return TokenResponse(
+        user_id=str(seller.id),
         access_token=access_token,
         refresh_token=raw_refresh,
+        expires_in=int(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60),
     )
 

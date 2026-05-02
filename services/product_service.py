@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+import re
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,6 +11,7 @@ from schemas.product import ProductCreate, ProductUpdate
 from services.public_service import get_product_by_id_public
 from services.outbox_service import add_outbox_event
 from models.sku import SKU
+from core.config import settings
 
 
 async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Product | None:
@@ -85,10 +88,13 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
             detail="Категория не найдена",
         )
 
+    slug = data.slug or await _generate_unique_slug(db, data.title)
+
     product = Product(
         seller_id=seller.id,
         category_id=data.category_id,
         title=data.title,
+        slug=slug,
         description=data.description,
     )
     db.add(product)
@@ -110,6 +116,27 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
 
     await db.commit()
     return await get_product_by_id(db, product.id)
+
+
+def _slugify(title: str) -> str:
+    cleaned = re.sub(r"[^\w\s-]", "", title, flags=re.UNICODE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
+    if not cleaned:
+        return "product"
+    return cleaned.replace(" ", "-")
+
+
+async def _generate_unique_slug(db: AsyncSession, title: str) -> str:
+    base = _slugify(title)
+    slug = base
+    suffix = 2
+
+    while True:
+        result = await db.execute(select(Product.id).where(Product.slug == slug))
+        if result.scalar_one_or_none() is None:
+            return slug
+        slug = f"{base}-{suffix}"
+        suffix += 1
 
 
 async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
@@ -140,9 +167,13 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
         await add_outbox_event(
             db=db,
             event_type="EDITED",
-            aggregate_type="PRODUCT",
-            aggregate_id=product.id,
-            payload={"product_id": str(product.id)},
+            target_url=settings.MODERATION_SERVICE_URL,
+            payload={
+                "product_id": str(product.id),
+                "seller_id": str(product.seller_id),
+                "event": "EDITED",
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
     await db.commit()
@@ -168,16 +199,24 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     await add_outbox_event(
         db=db,
         event_type="DELETED",
-        aggregate_type="PRODUCT",
-        aggregate_id=product.id,
-        payload={"product_id": str(product.id)},
+        target_url=settings.MODERATION_SERVICE_URL,
+        payload={
+            "product_id": str(product.id),
+            "seller_id": str(product.seller_id),
+            "event": "DELETED",
+            "date": datetime.now(timezone.utc).isoformat(),
+        },
     )
     await add_outbox_event(
         db=db,
         event_type="PRODUCT_DELETED",
-        aggregate_type="PRODUCT",
-        aggregate_id=product.id,
-        payload={"product_id": str(product.id), "sku_ids": sku_ids},
+        target_url=settings.B2C_SERVICE_URL,
+        payload={
+            "event": "PRODUCT_DELETED",
+            "product_id": str(product.id),
+            "sku_ids": sku_ids,
+            "date": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
     await db.commit()

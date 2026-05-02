@@ -3,18 +3,11 @@ from uuid import UUID
 
 
 class ProductEventRequest(BaseModel):
-    idempotency_key: str
+    idempotency_key: UUID
     product_id: UUID
     event_type: str
     moderator_comment: str | None = None
     blocking_reason_id: UUID | None = None
-
-    @field_validator("idempotency_key")
-    @classmethod
-    def idempotency_required(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("idempotency_key обязателен")
-        return v.strip()
 
     @field_validator("event_type")
     @classmethod

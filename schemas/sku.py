@@ -39,7 +39,9 @@ class SKUCreate(BaseModel):
     product_id: UUID
     name: str
     price: int
+    discount: int = 0
     cost_price: int | None = None
+    image: str | None = None
     article: str | None = None
     images: list[SKUImageCreate] = []
     characteristics: list[SKUCharacteristicCreate] = []
@@ -49,6 +51,13 @@ class SKUCreate(BaseModel):
     def price_must_be_positive(cls, v: int) -> int:
         if v < 0:
             raise ValueError("Цена не может быть отрицательной")
+        return v
+
+    @field_validator("discount")
+    @classmethod
+    def discount_must_be_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Скидка не может быть отрицательной")
         return v
 
     @field_validator("cost_price")
@@ -63,7 +72,9 @@ class SKUCreate(BaseModel):
 class SKUUpdate(BaseModel):
     name: str | None = None
     price: int | None = None
+    discount: int | None = None
     cost_price: int | None = None
+    image: str | None = None
     article: str | None = None
 
     @field_validator("price")
@@ -71,6 +82,13 @@ class SKUUpdate(BaseModel):
     def price_must_be_positive(cls, v: int | None) -> int | None:
         if v is not None and v < 0:
             raise ValueError("Цена не может быть отрицательной")
+        return v
+
+    @field_validator("discount")
+    @classmethod
+    def discount_must_be_non_negative(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("Скидка не может быть отрицательной")
         return v
 
     @field_validator("cost_price")
@@ -88,7 +106,9 @@ class SKUResponse(BaseModel):
     product_id: UUID
     name: str
     price: int
+    discount: int
     cost_price: int | None
+    image: str | None
     active_quantity: int
     reserved_quantity: int
     article: str | None
@@ -105,6 +125,8 @@ class SKUShortResponse(BaseModel):
     id: UUID
     name: str
     price: int
+    discount: int
+    image: str | None
     active_quantity: int
     article: str | None
 
@@ -116,6 +138,8 @@ class SKUPublicResponse(BaseModel):
     product_id: UUID
     name: str
     price: int
+    discount: int
+    image: str | None
     active_quantity: int
     article: str | None
     images: list[SKUImageResponse]
@@ -128,5 +152,7 @@ class SKUPublicShortResponse(BaseModel):
     id: UUID
     name: str
     price: int
+    discount: int
+    image: str | None
     active_quantity: int
     article: str | None

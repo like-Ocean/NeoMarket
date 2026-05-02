@@ -7,7 +7,6 @@ from .invoice import invoice_route
 from .upload import upload_route
 from .public import public_route
 from .inventory import inventory_route
-from .stock import stock_route
 
 routes = [
     auth_router,
@@ -19,5 +18,4 @@ routes = [
     upload_route.upload_router,
     public_route.public_router,
     inventory_route.inventory_router,
-    stock_route.stock_router,
 ]

@@ -15,6 +15,19 @@ class InventoryItem(BaseModel):
 
 
 class InventoryRequest(BaseModel):
+    idempotency_key: UUID
+    items: list[InventoryItem]
+
+    @field_validator("items")
+    @classmethod
+    def items_not_empty(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Список позиций не может быть пустым")
+        return v
+
+
+class InventoryOrderRequest(BaseModel):
+    order_id: UUID
     items: list[InventoryItem]
 
     @field_validator("items")

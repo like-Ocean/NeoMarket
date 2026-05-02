@@ -25,6 +25,7 @@ class Seller(Base, TimestampMixin):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     middle_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     company_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    inn: Mapped[str] = mapped_column(String(12), nullable=False, unique=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Relationships

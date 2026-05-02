@@ -1,5 +1,4 @@
 from fastapi import Depends, HTTPException, status, Header
-from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
@@ -8,10 +7,27 @@ from core.config import settings
 from models.seller import Seller
 from services.seller_service import get_seller_by_id
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+def _extract_bearer_token(authorization: str | None) -> str:
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не передан Authorization",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный формат Authorization",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return authorization.split(" ", 1)[1]
 
 
-async def get_current_seller(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> Seller:
+async def get_current_seller(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    db: AsyncSession = Depends(get_db),
+) -> Seller:
+    token = _extract_bearer_token(authorization)
     try:
         seller_id = decode_access_token(token)
     except JWTError:
@@ -37,10 +53,7 @@ async def get_current_seller_optional(
 ) -> Seller | None:
     if not authorization:
         return None
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный формат Authorization")
-    
-    token = authorization.split(" ", 1)[1]
+    token = _extract_bearer_token(authorization)
     try:
         seller_id = decode_access_token(token)
     except JWTError:

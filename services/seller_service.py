@@ -30,6 +30,7 @@ async def create_seller(db: AsyncSession, data: SellerCreate) -> Seller:
         last_name=data.last_name,
         middle_name=data.middle_name,
         company_name=data.company_name,
+        inn=data.inn,
         phone=data.phone,
     )
     db.add(seller)

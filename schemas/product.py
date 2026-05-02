@@ -40,6 +40,7 @@ class ProductCharacteristicResponse(BaseModel):
 class ProductCreate(BaseModel):
     category_id: UUID
     title: str
+    slug: str | None = None
     description: str
     images: list[ProductImageCreate] = []
     characteristics: list[ProductCharacteristicCreate] = []
@@ -57,6 +58,7 @@ class ProductShortResponse(BaseModel):
 
     id: UUID
     title: str
+    slug: str
     status: ProductStatus
     category_id: UUID
     created_at: datetime
@@ -72,6 +74,7 @@ class ProductResponse(BaseModel):
     seller_id: UUID
     category_id: UUID
     title: str
+    slug: str
     description: str
     status: ProductStatus
     deleted: bool
@@ -97,6 +100,7 @@ class ProductPublicShortResponse(BaseModel):
 
     id: UUID
     title: str
+    slug: str
     status: ProductStatus
     category_id: UUID
     created_at: datetime
@@ -108,6 +112,7 @@ class ProductPublicResponse(BaseModel):
     id: UUID
     category_id: UUID
     title: str
+    slug: str
     description: str
     status: ProductStatus
     images: list[ProductImageResponse]

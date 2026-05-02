@@ -10,5 +10,4 @@ from .sku_image import SKUImage
 from .invoice import Invoice
 from .invoice_item import InvoiceItem
 from .outbox_event import OutboxEvent
-from .inbox_event import InboxEvent
-from models.stock_reservation import StockReservation
+from .processed_event import ProcessedEvent

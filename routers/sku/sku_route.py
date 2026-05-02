@@ -11,11 +11,6 @@ from pydantic import BaseModel
 sku_router = APIRouter(prefix="/skus", tags=["SKUs"])
 
 
-class SKUImageCreateRequest(BaseModel):
-    url: str
-    ordering: int = 0
-
-
 class SKUImageUpdateRequest(BaseModel):
     url: str | None = None
     ordering: int | None = None
@@ -78,26 +73,6 @@ async def update_sku_image(
     return await image_service.update_sku_image(
         db=db,
         image_id=image_id,
-        seller_id=current_seller.id,
-        url=data.url,
-        ordering=data.ordering,
-    )
-
-
-@sku_router.post(
-    "/{sku_id}/images",
-    response_model=SKUImageResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Добавить изображение к SKU",
-)
-async def add_sku_image(
-    sku_id: UUID, data: SKUImageCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
-):
-    return await image_service.add_sku_image(
-        db=db,
-        sku_id=sku_id,
         seller_id=current_seller.id,
         url=data.url,
         ordering=data.ordering,

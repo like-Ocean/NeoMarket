@@ -39,6 +39,7 @@ class Product(Base, TimestampMixin):
         nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[ProductStatus] = mapped_column(
         SAEnum(ProductStatus), nullable=False, default=ProductStatus.CREATED, index=True

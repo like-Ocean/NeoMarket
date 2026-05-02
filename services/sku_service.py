@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -9,6 +10,7 @@ from models.product import Product, ProductStatus
 from models.seller import Seller
 from schemas.sku import SKUCreate, SKUUpdate
 from services.outbox_service import add_outbox_event
+from core.config import settings
 
 
 async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
@@ -100,7 +102,9 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         product_id=data.product_id,
         name=data.name,
         price=data.price,
+        discount=data.discount,
         cost_price=data.cost_price,
+        image=data.image,
         active_quantity=0,
         reserved_quantity=0,
         article=data.article,
@@ -127,9 +131,13 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         await add_outbox_event(
             db=db,
             event_type="CREATED",
-            aggregate_type="PRODUCT",
-            aggregate_id=product.id,
-            payload={"product_id": str(product.id)},
+            target_url=settings.MODERATION_SERVICE_URL,
+            payload={
+                "product_id": str(product.id),
+                "seller_id": str(product.seller_id),
+                "event": "CREATED",
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
     await db.commit()
@@ -163,9 +171,13 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
         await add_outbox_event(
             db=db,
             event_type="EDITED",
-            aggregate_type="PRODUCT",
-            aggregate_id=product.id,
-            payload={"product_id": str(product.id)},
+            target_url=settings.MODERATION_SERVICE_URL,
+            payload={
+                "product_id": str(product.id),
+                "seller_id": str(product.seller_id),
+                "event": "EDITED",
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
         )
 
     await db.commit()

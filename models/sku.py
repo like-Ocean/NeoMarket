@@ -11,13 +11,13 @@ if TYPE_CHECKING:
     from models.sku_image import SKUImage
     from models.sku_characteristic import SKUCharacteristic
     from models.invoice import InvoiceItem
-    from models.stock_reservation import StockReservation
 
 
 class SKU(Base, TimestampMixin):
     __tablename__ = "skus"
     __table_args__ = (
         CheckConstraint("price >= 0", name="ck_skus_price_non_negative"),
+        CheckConstraint("discount >= 0", name="ck_skus_discount_non_negative"),
         CheckConstraint("active_quantity >= 0", name="ck_skus_active_non_negative"),
         CheckConstraint("reserved_quantity >= 0", name="ck_skus_reserved_non_negative"),
     )
@@ -32,7 +32,9 @@ class SKU(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    discount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     cost_price: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     active_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reserved_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     article: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
@@ -46,7 +48,4 @@ class SKU(Base, TimestampMixin):
         back_populates="sku", cascade="all, delete-orphan"
     )
     invoice_items: Mapped[list["InvoiceItem"]] = relationship(back_populates="sku")
-    reservations: Mapped[list["StockReservation"]] = relationship(
-        back_populates="sku", cascade="all, delete-orphan"
-    )
 
