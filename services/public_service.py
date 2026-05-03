@@ -16,7 +16,7 @@ async def get_products_public(
     query = (
         select(Product)
         .join(SKU, SKU.product_id == Product.id)
-        # .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.status == ProductStatus.MODERATED)
         .where(Product.deleted == False)
         .where(SKU.active_quantity > 0)
         .distinct()
@@ -81,7 +81,7 @@ async def get_product_by_id_public(db: AsyncSession, product_id: UUID) -> Produc
             ),
         )
         .where(Product.id == product_id)
-        # .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.status == ProductStatus.MODERATED)
         .where(Product.deleted == False)
     )
     product = result.scalar_one_or_none()

@@ -167,7 +167,7 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
         await add_outbox_event(
             db=db,
             event_type="EDITED",
-            target_url=settings.MODERATION_SERVICE_URL,
+            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
             payload={
                 "product_id": str(product.id),
                 "seller_id": str(product.seller_id),
@@ -199,7 +199,7 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     await add_outbox_event(
         db=db,
         event_type="DELETED",
-        target_url=settings.MODERATION_SERVICE_URL,
+        target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
         payload={
             "product_id": str(product.id),
             "seller_id": str(product.seller_id),
@@ -231,7 +231,7 @@ async def get_similar_products(db: AsyncSession,  product_id: UUID, limit: int =
         select(Product)
         .where(Product.category_id == product.category_id)
         .where(Product.id != product_id)
-        # .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.status == ProductStatus.MODERATED)
         .order_by(Product.created_at.desc())
         .limit(limit)
     )

@@ -127,8 +127,7 @@ async def delete_product(
 async def product_events(
     data: ProductEventRequest,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_internal_token),
-    x_service_key: str = Header(alias="X-Service-Key"),
+    x_service_key: str = Header(alias="X-Service-Key")
 ):
     if x_service_key != settings.MOD_SERVICE_KEY:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")

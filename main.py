@@ -1,4 +1,5 @@
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from core.database import engine, Base
 from core.config import settings
 from routers import routes
+from services.outbox_worker import run_outbox_worker
 
 load_dotenv()
 
@@ -19,6 +21,9 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         print("Database tables created")
 
+    stop_event = asyncio.Event()
+    outbox_task = asyncio.create_task(run_outbox_worker(stop_event))
+
     try:
         None
     except Exception as e:
@@ -28,9 +33,12 @@ async def lifespan(app: FastAPI):
 
     print("Application started successfully")
 
-    yield
-
-    await engine.dispose()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        await outbox_task
+        await engine.dispose()
 
 
 app = FastAPI(

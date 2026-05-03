@@ -93,6 +93,14 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
             detail="Редактирование товара запрещено",
         )
 
+    if data.article:
+        existing = await db.execute(select(SKU).where(SKU.article == data.article))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"SKU с артикулом '{data.article}' уже существует",
+        )
+
     count_result = await db.execute(
         select(func.count(SKU.id)).where(SKU.product_id == product.id)
     )
@@ -131,7 +139,7 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         await add_outbox_event(
             db=db,
             event_type="CREATED",
-            target_url=settings.MODERATION_SERVICE_URL,
+            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
             payload={
                 "product_id": str(product.id),
                 "seller_id": str(product.seller_id),
@@ -160,6 +168,14 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Редактирование товара запрещено",
         )
+    
+    if data.article:
+        existing = await db.execute(select(SKU).where(SKU.article == data.article))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"SKU с артикулом '{data.article}' уже существует",
+            )
 
     old_status = product.status
 
@@ -171,7 +187,7 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
         await add_outbox_event(
             db=db,
             event_type="EDITED",
-            target_url=settings.MODERATION_SERVICE_URL,
+            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
             payload={
                 "product_id": str(product.id),
                 "seller_id": str(product.seller_id),

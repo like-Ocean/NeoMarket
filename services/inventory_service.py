@@ -70,7 +70,7 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
             await outbox_service.add_outbox_event(
                 db,
                 event_type="SKU_OUT_OF_STOCK",
-                target_url=settings.B2C_SERVICE_URL,
+                target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
                 payload={
                     "event": "SKU_OUT_OF_STOCK",
                     "product_id": str(sku.product_id),

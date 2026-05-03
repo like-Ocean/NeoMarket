@@ -48,7 +48,7 @@ async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> N
         await add_outbox_event(
             db=db,
             event_type="PRODUCT_BLOCKED",
-            target_url=settings.B2C_SERVICE_URL,
+            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
             payload={
                 "event": "PRODUCT_BLOCKED",
                 "product_id": str(product.id),
@@ -70,7 +70,7 @@ async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> N
         await add_outbox_event(
             db=db,
             event_type="PRODUCT_BLOCKED",
-            target_url=settings.B2C_SERVICE_URL,
+            target_url=settings.B2C_SERVICE_URL, #TODO: ВОТ ЭТО ГОВНО МБ ВЫЗОВЕТ ОШИБКУ ИЛИ НЕ БУДЕТ РАБОТАТЬ КАК НУЖНО, СМОТРИ КАК СДЕЛАНО ВЫШЕ, НУЖНО НАПИСАТЬ НОРМАЛЬНЫЙ URL
             payload={
                 "event": "PRODUCT_BLOCKED",
                 "product_id": str(product.id),

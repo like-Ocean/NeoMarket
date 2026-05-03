@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException, status, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
@@ -7,27 +8,23 @@ from core.config import settings
 from models.seller import Seller
 from services.seller_service import get_seller_by_id
 
-def _extract_bearer_token(authorization: str | None) -> str:
-    if not authorization:
+security = HTTPBearer(auto_error=False)
+
+def _extract_bearer_token(credentials: HTTPAuthorizationCredentials | None) -> str:
+    if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Не передан Authorization",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный формат Authorization",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return authorization.split(" ", 1)[1]
+    return credentials.credentials
 
 
 async def get_current_seller(
-    authorization: str | None = Header(default=None, alias="Authorization"),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> Seller:
-    token = _extract_bearer_token(authorization)
+    token = _extract_bearer_token(credentials)
     try:
         seller_id = decode_access_token(token)
     except JWTError:
@@ -48,12 +45,12 @@ async def get_current_seller(
 
 
 async def get_current_seller_optional(
-    authorization: str | None = Header(default=None, alias="Authorization"),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> Seller | None:
-    if not authorization:
+    if not credentials:
         return None
-    token = _extract_bearer_token(authorization)
+    token = _extract_bearer_token(credentials)
     try:
         seller_id = decode_access_token(token)
     except JWTError:

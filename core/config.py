@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     MODERATION_SERVICE_URL: str = ""
     B2C_SERVICE_URL: str = ""
 
+    # Outbox worker
+    OUTBOX_POLL_INTERVAL_SECONDS: int = 5
+    OUTBOX_BATCH_SIZE: int = 50
+    OUTBOX_MAX_RETRIES: int = 10
+    OUTBOX_BASE_BACKOFF_SECONDS: int = 5
+    OUTBOX_MAX_BACKOFF_SECONDS: int = 300
+    OUTBOX_HTTP_TIMEOUT_SECONDS: int = 10
+
     # Admin
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
