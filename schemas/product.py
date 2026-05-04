@@ -42,7 +42,7 @@ class ProductCreate(BaseModel):
     title: str
     slug: str | None = None
     description: str
-    images: list[ProductImageCreate] = []
+    images: list[ProductImageCreate]
     characteristics: list[ProductCharacteristicCreate] = []
 
 

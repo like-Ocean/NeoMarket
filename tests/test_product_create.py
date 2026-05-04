@@ -20,6 +20,7 @@ TEST_SELLER = Seller(
     first_name="Test",
     last_name="Seller",
     company_name="Test Company",
+    inn="1111111111",
 )
 
 
@@ -50,6 +51,7 @@ def valid_product_payload():
     return {
         "category_id": str(uuid4()),
         "title": "Ноутбук Acer",
+        "slug": "test-slug",
         "description": "Отличный ноутбук для работы",
         "images": [
             {"url": "https://example.com/img1.jpg", "ordering": 0},
@@ -65,7 +67,6 @@ def valid_product_payload():
 @pytest.mark.asyncio
 async def test_create_product_returns_201_with_created_status(client, valid_product_payload):
     with patch("services.product_service.create_product", new_callable=AsyncMock) as mock_create:
-
         product_id = uuid4()
         expected_response = ProductResponse(
             id=product_id,
@@ -73,6 +74,11 @@ async def test_create_product_returns_201_with_created_status(client, valid_prod
             category_id=uuid4(),
             title=valid_product_payload["title"],
             description=valid_product_payload["description"],
+            slug=valid_product_payload["slug"],
+            deleted=False,
+            blocked=False,
+            blocking_reason_id=None,
+            moderator_comment=None,
             status=ProductStatus.CREATED,
             images=[],
             characteristics=[],
@@ -104,6 +110,11 @@ async def test_seller_id_taken_from_jwt(client, valid_product_payload):
             category_id=uuid4(),
             title=valid_product_payload["title"],
             description=valid_product_payload["description"],
+            slug=valid_product_payload["slug"],
+            deleted=False,
+            blocked=False,
+            blocking_reason_id=None,
+            moderator_comment=None,
             status=ProductStatus.CREATED,
             images=[],
             characteristics=[],
@@ -124,42 +135,24 @@ async def test_seller_id_taken_from_jwt(client, valid_product_payload):
 
 
 @pytest.mark.asyncio
-async def test_missing_images_returns_201(client):
-    payload = {
-        "category_id": str(uuid4()),
-        "title": "Товар без изображений",
-        "description": "Здесь нет ключа images",
-        "characteristics": [],
-    }
+async def test_missing_images_returns_400(client, valid_product_payload):
+    payload = valid_product_payload.copy()
+    payload.pop("images")
 
-    with patch("services.product_service.create_product", new_callable=AsyncMock) as mock_create:
-        product_id = uuid4()
-        mock_create.return_value = ProductResponse(
-            id=product_id,
-            seller_id=TEST_SELLER_ID,
-            category_id=uuid4(),
-            title=payload["title"],
-            description=payload["description"],
-            status=ProductStatus.CREATED,
-            images=[],
-            characteristics=[],
-            skus=[],
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-        )
-        response = await client.post("/api/products", json=payload)
-
-    assert response.status_code == 201
+    response = await client.post("/api/products", json=payload)
+    assert response.status_code == 400
+    data = response.json()
+    assert data["code"] == "INVALID_REQUEST"
+    assert "image" in data["message"].lower()
 
 
 @pytest.mark.asyncio
-async def test_missing_category_returns_422(client):
-    payload = {
-        "title": "Товар без категории",
-        "description": "Ключ category_id отсутствует",
-        "images": [{"url": "http://example.com/img.jpg", "ordering": 0}],
-    }
+async def test_missing_category_returns_400(client, valid_product_payload):
+    payload = valid_product_payload.copy()
+    payload.pop("category_id")
 
     response = await client.post("/api/products", json=payload)
-
-    assert response.status_code == 422
+    assert response.status_code == 400
+    data = response.json()
+    assert data["code"] == "INVALID_REQUEST"
+    assert "category" in data["message"].lower()

@@ -14,6 +14,8 @@ services:
 
     ports:
       - "${DB_PORT}:5432"
+    networks:
+      - marketplace
 
   # ── App ───────────────────────────────────────────────────
   b2b_app:
@@ -27,6 +29,12 @@ services:
     depends_on:
       - b2b_postgresql
     restart: unless-stopped
+    networks:
+      - marketplace
 
 volumes:
   b2b_postgres_data:
+
+networks:
+  marketplace:
+    external: true

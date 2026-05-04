@@ -4,7 +4,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from uuid import UUID
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
+from fastapi.responses import JSONResponse
 from models import Category, Product, ProductCharacteristic, ProductImage, Seller
 from models.product import ProductStatus
 from schemas.product import ProductCreate, ProductUpdate
@@ -78,15 +79,26 @@ async def get_products_by_seller(
 
 
 async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) -> Product:
+    
+    if data.title is None or (isinstance(data.title, str) and data.title.strip() == ""):
+        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "title is required"})
+    if not isinstance(data.title, str) or len(data.title) < 1 or len(data.title) > 255:
+        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "title must be 1-255 characters"})
+
+    if data.images is None or not isinstance(data.images, list) or len(data.images) == 0:
+        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "At least one image is required"})
+
+    try:
+        _ = UUID(str(data.category_id))
+    except Exception:
+        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"})
+
     category_result = await db.execute(
         select(Category).where(Category.id == data.category_id)
     )
     category = category_result.scalar_one_or_none()
     if not category:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Категория не найдена",
-        )
+        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "Category not found"})
 
     slug = data.slug or await _generate_unique_slug(db, data.title)
 
