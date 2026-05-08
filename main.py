@@ -47,7 +47,7 @@ app = FastAPI(
     title="NEO Market", version="1.0.0",
     lifespan=lifespan, debug=settings.DEBUG
 )
-
+# удалить 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
     for err in exc.errors():
