@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from uuid import UUID
-from fastapi import HTTPException, status, Request
+from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 from models import Category, Product, ProductCharacteristic, ProductImage, Seller
 from models.product import ProductStatus
@@ -107,7 +107,7 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
         category_id=data.category_id,
         title=data.title,
         slug=slug,
-        description=data.description,
+        description=data.description or "",
     )
     db.add(product)
     await db.flush()

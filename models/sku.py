@@ -49,3 +49,7 @@ class SKU(Base, TimestampMixin):
     )
     invoice_items: Mapped[list["InvoiceItem"]] = relationship(back_populates="sku")
 
+    @property
+    def stock_quantity(self) -> int:
+        return self.active_quantity
+

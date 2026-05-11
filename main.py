@@ -48,33 +48,33 @@ app = FastAPI(
     lifespan=lifespan, debug=settings.DEBUG
 )
 # удалить 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc: RequestValidationError):
-    for err in exc.errors():
-        # Отсутствует category_id
-        if err["loc"][-1] == "category_id" and err["type"] == "missing":
-            return JSONResponse(
-                status_code=400,
-                content={"code": "INVALID_REQUEST", "message": "Requires a category_id"}
-            )
-        # Невалидный UUID (строка, не UUID)
-        if err["loc"][-1] == "category_id" and err["type"] == "uuid_parsing":
-            return JSONResponse(
-                status_code=400,
-                content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"}
-            )
-        # Отсутствует images
-        if err["loc"][-1] == "images" and err["type"] == "missing":
-            return JSONResponse(
-                status_code=400,
-                content={"code": "INVALID_REQUEST", "message": "At least one image is required"}
-            )
+# @app.exception_handler(RequestValidationError)
+# async def validation_exception_handler(request, exc: RequestValidationError):
+#     for err in exc.errors():
+#         # Отсутствует category_id
+#         if err["loc"][-1] == "category_id" and err["type"] == "missing":
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={"code": "INVALID_REQUEST", "message": "Requires a category_id"}
+#             )
+#         # Невалидный UUID (строка, не UUID)
+#         if err["loc"][-1] == "category_id" and err["type"] == "uuid_parsing":
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"}
+#             )
+#         # Отсутствует images
+#         if err["loc"][-1] == "images" and err["type"] == "missing":
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={"code": "INVALID_REQUEST", "message": "At least one image is required"}
+#             )
 
-    # Все остальные ошибки – стандартный ответ 422
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors()}
-    )
+#     # Все остальные ошибки – стандартный ответ 422
+#     return JSONResponse(
+#         status_code=422,
+#         content={"detail": exc.errors()}
+#     )
 
 app.add_middleware(
     CORSMiddleware,

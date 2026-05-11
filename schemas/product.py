@@ -41,8 +41,8 @@ class ProductCreate(BaseModel):
     category_id: UUID
     title: str
     slug: str | None = None
-    description: str
-    images: list[ProductImageCreate]
+    description: str | None = None
+    images: list[ProductImageCreate] = []
     characteristics: list[ProductCharacteristicCreate] = []
 
 

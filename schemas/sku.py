@@ -109,6 +109,7 @@ class SKUResponse(BaseModel):
     discount: int
     cost_price: int | None
     image: str | None
+    stock_quantity: int
     active_quantity: int
     reserved_quantity: int
     article: str | None
@@ -127,6 +128,7 @@ class SKUShortResponse(BaseModel):
     price: int
     discount: int
     image: str | None
+    stock_quantity: int
     active_quantity: int
     article: str | None
 
@@ -140,6 +142,7 @@ class SKUPublicResponse(BaseModel):
     price: int
     discount: int
     image: str | None
+    stock_quantity: int
     active_quantity: int
     article: str | None
     images: list[SKUImageResponse]
@@ -154,5 +157,6 @@ class SKUPublicShortResponse(BaseModel):
     price: int
     discount: int
     image: str | None
+    stock_quantity: int
     active_quantity: int
     article: str | None
