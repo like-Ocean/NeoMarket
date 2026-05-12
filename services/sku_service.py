@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
+from fastapi.responses import JSONResponse
 from models.sku import SKU
 from models.sku_image import SKUImage
 from models.sku_characteristic import SKUCharacteristic
@@ -73,21 +74,51 @@ async def get_skus_by_product(db: AsyncSession, product_id, seller_id) -> list[S
 
 
 async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
+    if data.name is None or (isinstance(data.name, str) and data.name.strip() == ""):
+        return JSONResponse(
+            status_code=400,
+            content={"code": "INVALID_REQUEST", "message": "name is required"},
+        )
+    if data.price is None or data.price <= 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": "INVALID_REQUEST",
+                "message": "price must be a positive integer (kopecks)",
+            },
+        )
+    if data.cost_price is not None and data.cost_price <= 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": "INVALID_REQUEST",
+                "message": "cost_price must be a positive integer (kopecks)",
+            },
+        )
+    if data.image is None or (isinstance(data.image, str) and data.image.strip() == ""):
+        return JSONResponse(
+            status_code=400,
+            content={"code": "INVALID_REQUEST", "message": "image is required"},
+        )
+
     product_result = await db.execute(
         select(Product).where(Product.id == data.product_id)
     )
     product = product_result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+    if not product or product.seller_id != seller.id:
+        return JSONResponse(
+            status_code=404,
+            content={"code": "NOT_FOUND", "message": "Product not found"},
         )
-    if product.seller_id != seller.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+    if product.status == ProductStatus.HARD_BLOCKED:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "code": "FORBIDDEN",
+                "message": "Cannot add SKU to hard-blocked product",
+            },
         )
-    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+    if product.status == ProductStatus.ON_MODERATION:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Редактирование товара запрещено",
