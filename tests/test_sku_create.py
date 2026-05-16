@@ -4,11 +4,11 @@ import pytest
 from uuid import UUID, uuid4
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import delete, select
-
 from core.config import settings
 from core.database import AsyncSessionLocal, Base, engine
 from core.dependencies import get_current_seller
 from main import app
+from models.invoice_item import InvoiceItem
 from models.category import Category
 from models.outbox_event import OutboxEvent
 from models.product import Product, ProductStatus
@@ -69,6 +69,7 @@ async def test_context(db_session):
     finally:
         await db_session.execute(delete(SKUImage))
         await db_session.execute(delete(SKUCharacteristic))
+        await db_session.execute(delete(InvoiceItem))
         await db_session.execute(delete(SKU))
         await db_session.execute(delete(OutboxEvent))
         await db_session.execute(delete(Product).where(Product.seller_id == seller.id))
