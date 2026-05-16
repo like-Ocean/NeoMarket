@@ -309,3 +309,150 @@ async def test_add_sku_creates_images_and_characteristics(
 
     assert len(image_result.scalars().all()) == 1
     assert len(characteristic_result.scalars().all()) == 1
+
+
+async def test_edit_moderated_product_returns_to_on_moderation(
+    client, product_factory, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "MODERATION_SERVICE_URL", "http://moderation")
+    await db_session.execute(delete(OutboxEvent))
+
+    product = await product_factory(status=ProductStatus.MODERATED)
+    response = await client.patch(
+        f"/api/v1/products/{product.id}",
+        json={"title": "Updated title"},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(product)
+    assert product.status == ProductStatus.ON_MODERATION
+
+    result = await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "EDITED")
+    )
+    events = result.scalars().all()
+    assert len(events) == 1
+    payload = json.loads(events[0].payload)
+    assert payload["product_id"] == str(product.id)
+    assert payload["seller_id"] == str(product.seller_id)
+    assert payload["event"] == "EDITED"
+    assert "date" in payload
+
+
+async def test_edit_blocked_product_returns_to_on_moderation(
+    client, product_factory, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "MODERATION_SERVICE_URL", "http://moderation")
+    await db_session.execute(delete(OutboxEvent))
+
+    product = await product_factory(status=ProductStatus.BLOCKED)
+    response = await client.patch(
+        f"/api/v1/products/{product.id}",
+        json={"title": "Updated title"},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(product)
+    assert product.status == ProductStatus.ON_MODERATION
+
+    result = await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "EDITED")
+    )
+    events = result.scalars().all()
+    assert len(events) == 1
+
+
+async def test_reserves_preserved_after_sku_edit(client, product, db_session):
+    sku = SKU(
+        id=uuid4(),
+        product_id=product.id,
+        name="Reserved SKU",
+        price=900,
+        discount=0,
+        cost_price=None,
+        active_quantity=5,
+        reserved_quantity=3,
+        article=None,
+    )
+    db_session.add(sku)
+    await db_session.commit()
+
+    response = await client.patch(
+        f"/api/v1/skus/{sku.id}",
+        json={"price": 1200},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(sku)
+    assert sku.reserved_quantity == 3
+
+
+async def test_edit_hard_blocked_returns_403(client, product_factory, db_session):
+    product = await product_factory(status=ProductStatus.HARD_BLOCKED)
+
+    response = await client.patch(
+        f"/api/v1/products/{product.id}",
+        json={"title": "Updated title"},
+    )
+
+    assert response.status_code == 403
+
+    sku = SKU(
+        id=uuid4(),
+        product_id=product.id,
+        name="Blocked SKU",
+        price=900,
+        discount=0,
+        cost_price=None,
+        active_quantity=0,
+        reserved_quantity=0,
+        article=None,
+    )
+    db_session.add(sku)
+    await db_session.commit()
+
+    response = await client.patch(
+        f"/api/v1/skus/{sku.id}",
+        json={"price": 1100},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_edit_others_product_returns_403(client, db_session, test_context):
+    other_seller = Seller(
+        id=uuid4(),
+        email=f"other-edit-{uuid4()}@example.com",
+        password_hash="fake_hash",
+        first_name="Other",
+        last_name="Seller",
+        company_name="Other Company",
+        inn=str(uuid4()).replace("-", "")[:12],
+    )
+    db_session.add(other_seller)
+    await db_session.commit()
+
+    product = Product(
+        id=uuid4(),
+        seller_id=other_seller.id,
+        category_id=test_context["category"].id,
+        title="Other product",
+        slug=f"other-edit-product-{uuid4()}",
+        description="",
+        status=ProductStatus.CREATED,
+        deleted=False,
+        blocked=False,
+    )
+    db_session.add(product)
+    await db_session.commit()
+
+    response = await client.patch(
+        f"/api/v1/products/{product.id}",
+        json={"title": "Updated title"},
+    )
+
+    assert response.status_code == 403
+
+    await db_session.execute(delete(Product).where(Product.id == product.id))
+    await db_session.execute(delete(Seller).where(Seller.id == other_seller.id))
+    await db_session.commit()

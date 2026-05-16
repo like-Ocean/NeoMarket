@@ -159,7 +159,12 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
 
 
 async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
-    product = await get_product_by_id(db, product_id, seller_id=seller.id)
+    product = await get_product_by_id(db, product_id)
+    if product.seller_id != seller.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Нет доступа",
+        )
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
