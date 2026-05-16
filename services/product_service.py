@@ -21,7 +21,8 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
         .options(
             selectinload(Product.images),
             selectinload(Product.characteristics),
-            selectinload(Product.skus),
+            selectinload(Product.skus).selectinload(SKU.images),
+            selectinload(Product.skus).selectinload(SKU.characteristics),
         )
         .where(Product.id == product_id)
     )
@@ -108,6 +109,12 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
         return JSONResponse(
             status_code=400, 
             content={"code": "INVALID_REQUEST", "message": "title must be 1-255 characters"}
+        )
+    
+    if not data.images:
+        return JSONResponse(
+            status_code=400,
+            content={"code": "INVALID_REQUEST", "message": "At least one image is required"}
         )
 
     try:

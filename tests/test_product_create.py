@@ -13,6 +13,7 @@ from models.seller import Seller
 from models.invoice_item import InvoiceItem
 from core.config import settings
 from models.outbox_event import OutboxEvent
+from core.dependencies import get_current_seller, get_current_seller_optional
 from models.sku import SKU
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -62,9 +63,17 @@ async def test_context(db_session):
     await db_session.refresh(seller)
     await db_session.refresh(category)
 
+    async def _override():
+        return seller
+    
+    app.dependency_overrides[get_current_seller] = _override
+    app.dependency_overrides[get_current_seller_optional] = _override
+
     try:
         yield {"seller": seller, "category": category}
     finally:
+        app.dependency_overrides.pop(get_current_seller, None)
+        app.dependency_overrides.pop(get_current_seller_optional, None)
         await db_session.execute(delete(OutboxEvent))
         await db_session.execute(delete(InvoiceItem))
         await db_session.execute(delete(SKU).where(
@@ -78,14 +87,9 @@ async def test_context(db_session):
 
 @pytest.fixture
 async def client(test_context):
-    async def _override_get_current_seller():
-        return test_context["seller"]
-
-    app.dependency_overrides[get_current_seller] = _override_get_current_seller
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.pop(get_current_seller, None)
 
 
 @pytest.fixture
@@ -108,7 +112,11 @@ async def valid_product_payload(test_context):
 
 @pytest.fixture
 async def product_factory(db_session, test_context):
-    async def _factory(status: ProductStatus = ProductStatus.CREATED) -> Product:
+    async def _factory(
+        status: ProductStatus = ProductStatus.CREATED,
+        blocking_reason_id=None,
+        moderator_comment=None
+    ) -> Product:
         product = Product(
             id=uuid4(),
             seller_id=test_context["seller"].id,
@@ -117,6 +125,8 @@ async def product_factory(db_session, test_context):
             slug=f"test-product-{uuid4()}",
             description="",
             status=status,
+            blocking_reason_id=blocking_reason_id,
+            moderator_comment=moderator_comment,
             deleted=False,
             blocked=False,
         )
@@ -333,3 +343,137 @@ async def test_deleted_product_not_in_seller_list(client, product_factory, db_se
     item_ids = {item["id"] for item in items}
     assert str(deleted_product.id) not in item_ids
     assert str(active_product.id) in item_ids
+
+
+# ──────────────────────────────────────────────
+# Тест 1: MODERATED — полный payload с SKU и cost_price, blocking_reason=null
+# ──────────────────────────────────────────────
+
+@pytest.fixture
+async def sku_factory(db_session, test_context):
+    async def _factory(product: Product, cost_price: int | None = 500) -> SKU:
+        sku = SKU(
+            id=uuid4(),
+            product_id=product.id,
+            name=f"SKU-{uuid4()}",
+            price=1000,
+            discount=0,
+            cost_price=cost_price,
+            active_quantity=5,
+            reserved_quantity=0,
+            article=None,
+        )
+        db_session.add(sku)
+        await db_session.commit()
+        await db_session.refresh(sku)
+        return sku
+
+    return _factory
+
+
+async def test_get_moderated_product_returns_full_payload(
+    client, test_context, product_factory, sku_factory
+):
+    product = await product_factory(
+        status=ProductStatus.MODERATED,
+        blocking_reason_id=None,
+        moderator_comment=None,
+    )
+    sku = await sku_factory(product, cost_price=750)
+
+    response = await client.get(f"/api/v1/products/{product.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["id"] == str(product.id)
+    assert data["seller_id"] == str(product.seller_id)
+    assert data["category_id"] == str(product.category_id)
+    assert data["title"] == product.title
+    assert data["description"] == product.description
+    assert data["status"] == ProductStatus.MODERATED.value
+    assert data["deleted"] is False
+    assert data["blocking_reason_id"] is None
+
+    assert len(data["skus"]) == 1
+    sku_data = data["skus"][0]
+    assert sku_data["id"] == str(sku.id)
+    assert sku_data["cost_price"] == 750
+    assert sku_data["price"] == 1000
+
+
+# ──────────────────────────────────────────────
+# Тест 2: BLOCKED — blocking_reason_id и moderator_comment в ответе
+# ──────────────────────────────────────────────
+
+async def test_get_blocked_product_returns_blocking_reason_and_field_reports(
+    client, test_context, product_factory
+):
+    blocking_reason_id = uuid4()
+    moderator_comment = "Нарушение правил: запрещённый товар"
+
+    product = await product_factory(
+        status=ProductStatus.BLOCKED,
+        blocking_reason_id=blocking_reason_id,
+        moderator_comment=moderator_comment,
+    )
+
+    response = await client.get(f"/api/v1/products/{product.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == ProductStatus.BLOCKED.value
+    assert data["blocking_reason_id"] == str(blocking_reason_id)
+    assert data["moderator_comment"] == moderator_comment
+
+
+# ──────────────────────────────────────────────
+# Тест 3: чужой товар → 404 (не 403)
+# ──────────────────────────────────────────────
+
+async def test_get_others_product_returns_404(client, db_session, test_context):
+    other_seller = Seller(
+        id=uuid4(),
+        email=f"other-{uuid4()}@example.com",
+        password_hash="fake_hash",
+        first_name="Other",
+        last_name="Seller",
+        company_name="Other Company",
+        inn=str(uuid4()).replace("-", "")[:12],
+    )
+    db_session.add(other_seller)
+    await db_session.commit()
+    await db_session.refresh(other_seller)
+
+    other_product = Product(
+        id=uuid4(),
+        seller_id=other_seller.id,
+        category_id=test_context["category"].id,
+        title="Other seller product",
+        slug=f"other-product-{uuid4()}",
+        description="Not yours",
+        status=ProductStatus.CREATED,
+        deleted=False,
+        blocked=False,
+    )
+    db_session.add(other_product)
+    await db_session.commit()
+
+    try:
+        response = await client.get(f"/api/v1/products/{other_product.id}")
+        assert response.status_code == 404
+    finally:
+        await db_session.execute(delete(Product).where(Product.id == other_product.id))
+        await db_session.execute(delete(Seller).where(Seller.id == other_seller.id))
+        await db_session.commit()
+
+
+# ──────────────────────────────────────────────
+# Тест 4: несуществующий ID → 404
+# ──────────────────────────────────────────────
+
+async def test_get_nonexistent_returns_404(client, test_context):
+    response = await client.get(f"/api/v1/products/{uuid4()}")
+
+    assert response.status_code == 404
