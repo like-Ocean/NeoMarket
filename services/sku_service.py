@@ -77,12 +77,7 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         select(Product).where(Product.id == data.product_id)
     )
     product = product_result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
-        )
-    if product.seller_id != seller.id:
+    if not product or product.seller_id != seller.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Товар не найден",
