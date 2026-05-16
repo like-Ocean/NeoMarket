@@ -5,15 +5,10 @@ from core.database import get_db
 from core.dependencies import get_current_seller
 from models.seller import Seller
 from schemas.sku import SKUCreate, SKUUpdate, SKUResponse, SKUImageResponse
+from schemas.image import ImageAttachRequest, ImageUpdateRequest
 from services import sku_service, image_service
-from pydantic import BaseModel
 
 sku_router = APIRouter(prefix="/skus", tags=["SKUs"])
-
-
-class SKUImageUpdateRequest(BaseModel):
-    url: str | None = None
-    ordering: int | None = None
 
 
 @sku_router.get("/by-product/{product_id}", response_model=list[SKUResponse], summary="Все SKU товара")
@@ -61,12 +56,34 @@ async def delete_sku(
 
 
 
+@sku_router.post(
+    "/{sku_id}/images",
+    response_model=SKUImageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Прикрепить изображение к SKU",
+)
+async def add_sku_image(
+    sku_id: UUID,
+    data: ImageAttachRequest,
+    db: AsyncSession = Depends(get_db),
+    current_seller: Seller = Depends(get_current_seller),
+):
+    return await image_service.attach_sku_image(
+        db=db,
+        sku_id=sku_id,
+        seller_id=current_seller.id,
+        image_id=data.image_id,
+        url=data.url,
+        ordering=data.ordering
+    )
+
+
 @sku_router.patch(
     "/images/{image_id}", response_model=SKUImageResponse,
     summary="Обновить изображение SKU",
 )
 async def update_sku_image(
-    image_id: UUID, data: SKUImageUpdateRequest,
+    image_id: UUID, data: ImageUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
 ):

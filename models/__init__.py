@@ -11,3 +11,4 @@ from .invoice import Invoice
 from .invoice_item import InvoiceItem
 from .outbox_event import OutboxEvent
 from .processed_event import ProcessedEvent
+from .uploaded_image import UploadedImage

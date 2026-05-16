@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator
 from uuid import UUID
+from datetime import datetime
 
 
 class InventoryItem(BaseModel):
@@ -14,8 +15,9 @@ class InventoryItem(BaseModel):
         return v
 
 
-class InventoryRequest(BaseModel):
+class ReserveRequest(BaseModel):
     idempotency_key: UUID
+    order_id: UUID
     items: list[InventoryItem]
 
     @field_validator("items")
@@ -24,6 +26,12 @@ class InventoryRequest(BaseModel):
         if not v:
             raise ValueError("Список позиций не может быть пустым")
         return v
+
+
+class ReserveResponse(BaseModel):
+    order_id: UUID
+    status: str
+    reserved_at: datetime
 
 
 class InventoryOrderRequest(BaseModel):
@@ -36,3 +44,9 @@ class InventoryOrderRequest(BaseModel):
         if not v:
             raise ValueError("Список позиций не может быть пустым")
         return v
+
+
+class InventoryOrderResponse(BaseModel):
+    order_id: UUID
+    status: str
+    processed_at: datetime

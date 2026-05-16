@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 from models import Category, Product
 from schemas.category import CategoryCreate, CategoryUpdate
+from helpers.category import _slugify, _build_category_path
 
 
 async def get_category_by_id(db: AsyncSession, category_id) -> Category | None:
@@ -18,15 +19,38 @@ async def get_category_by_id(db: AsyncSession, category_id) -> Category | None:
     return result.scalar_one_or_none()
 
 
+def serialize_category(category: Category) -> dict:
+    path = _build_category_path(category)
+    level = path.count("/")
+    return {
+        "id": category.id,
+        "name": category.name,
+        "parent_id": category.parent_id,
+        "level": level,
+        "path": path,
+        "is_active": True,
+        "created_at": category.created_at,
+    }
+
+
+def serialize_category_with_children(category: Category) -> dict:
+    data = serialize_category(category)
+    data["children"] = [serialize_category(child) for child in category.children]
+    return data
+
+
 async def get_categories(db: AsyncSession, parent_id=None, only_root: bool = False) -> list[Category]:
-    query = select(Category).options(selectinload(Category.children))
+    query = select(Category).options(
+        selectinload(Category.children),
+        selectinload(Category.parent),
+    )
     if only_root:
         query = query.where(Category.parent_id == None)
     elif parent_id is not None:
         query = query.where(Category.parent_id == parent_id)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    return [serialize_category(category) for category in result.scalars().all()]
 
 
 async def create_category(db: AsyncSession, data: CategoryCreate) -> Category:
@@ -45,7 +69,8 @@ async def create_category(db: AsyncSession, data: CategoryCreate) -> Category:
     db.add(category)
     await db.commit()
 
-    return await get_category_by_id(db, category.id)
+    category = await get_category_by_id(db, category.id)
+    return serialize_category_with_children(category)
 
 
 async def update_category(db: AsyncSession, category: Category, data: CategoryUpdate) -> Category:
@@ -67,7 +92,8 @@ async def update_category(db: AsyncSession, category: Category, data: CategoryUp
 
     await db.commit()
 
-    return await get_category_by_id(db, category.id)
+    category = await get_category_by_id(db, category.id)
+    return serialize_category_with_children(category)
 
 
 async def delete_category(db: AsyncSession, category: Category):
@@ -101,7 +127,7 @@ async def get_categories_tree(db: AsyncSession, parent_id: UUID | None = None) -
     tree = []
     for category in categories:
         node = {
-            "id": str(category.id),
+            "id": category.id,
             "name": category.name,
             "children": await get_categories_tree(db, category.id)
         }
@@ -115,12 +141,7 @@ async def get_breadcrumbs(db: AsyncSession, category_id: UUID) -> list[dict]:
     current = await get_category_by_id(db, category_id)
     
     while current:
-        breadcrumbs.insert(0, {
-            "id": str(current.id),
-            "name": current.name,
-            "parent_id": str(current.parent_id) if current.parent_id else None,
-            "created_at": current.created_at
-        })
+        breadcrumbs.insert(0, serialize_category(current))
         current = current.parent
     
     return breadcrumbs

@@ -9,7 +9,7 @@ from services import image_service
 from services.file_service import upload_image
 from core.database import get_db
 
-upload_router = APIRouter(prefix="/v1", tags=["Images"])
+upload_router = APIRouter(prefix="/images", tags=["Images"])
 
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
@@ -36,7 +36,7 @@ async def _validate_image_upload(file: UploadFile) -> None:
 
 
 @upload_router.post(
-    "/images",
+    "",
     response_model=ImageUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Загрузить изображение",
@@ -44,35 +44,52 @@ async def _validate_image_upload(file: UploadFile) -> None:
 async def upload_image_endpoint(
     file: UploadFile = File(...),
     entity_type: str = Form(...),
-    entity_id: UUID = Form(...),
+    entity_id: UUID | None = Form(None),
     ordering: int = Form(0),
     db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
 ):
-    normalized_type = entity_type.strip().lower()
-    if normalized_type not in {"product", "sku"}:
+    normalized_type = entity_type.strip().upper()
+    if normalized_type not in {"PRODUCT", "SKU"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="entity_type должен быть product или sku",
         )
 
-    if normalized_type == "product":
-        await image_service._get_product_for_seller(
-            db=db,
-            product_id=entity_id,
-            seller_id=current_seller.id,
-        )
-    else:
-        await image_service._get_sku_for_seller(
-            db=db,
-            sku_id=entity_id,
-            seller_id=current_seller.id,
-        )
+    if entity_id is not None:
+        if normalized_type == "PRODUCT":
+            await image_service._get_product_for_seller(
+                db=db,
+                product_id=entity_id,
+                seller_id=current_seller.id,
+            )
+        else:
+            await image_service._get_sku_for_seller(
+                db=db,
+                sku_id=entity_id,
+                seller_id=current_seller.id,
+            )
 
     await _validate_image_upload(file)
     url = await upload_image(file)
 
-    if normalized_type == "product":
+    if entity_id is None:
+        uploaded = await image_service.create_uploaded_image(
+            db=db,
+            url=url,
+            entity_type=normalized_type,
+            entity_id=None,
+            ordering=ordering,
+        )
+        return ImageUploadResponse(
+            id=uploaded.id,
+            url=uploaded.url,
+            ordering=uploaded.ordering,
+            entity_type=uploaded.entity_type,
+            entity_id=None,
+        )
+
+    if normalized_type == "PRODUCT":
         image = await image_service.add_product_image(
             db=db,
             product_id=entity_id,
@@ -84,7 +101,7 @@ async def upload_image_endpoint(
             id=image.id,
             url=image.url,
             ordering=image.ordering,
-            entity_type="product",
+            entity_type="PRODUCT",
             entity_id=image.product_id,
         )
 
@@ -99,6 +116,6 @@ async def upload_image_endpoint(
         id=image.id,
         url=image.url,
         ordering=image.ordering,
-        entity_type="sku",
+        entity_type="SKU",
         entity_id=image.sku_id,
     )

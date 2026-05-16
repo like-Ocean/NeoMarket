@@ -6,16 +6,16 @@ from models.seller import Seller
 from schemas.seller import SellerUpdate, SellerResponse
 from services import seller_service
 
-seller_router = APIRouter(prefix="/seller", tags=["Seller"])
+seller_router = APIRouter(prefix="/sellers", tags=["Seller"])
 
 
-@seller_router.get("/profile", response_model=SellerResponse, summary="Мой профиль")
+@seller_router.get("/me", response_model=SellerResponse, summary="Мой профиль")
 async def get_my_data(current_seller: Seller = Depends(get_current_seller)):
     return current_seller
 
 
 @seller_router.patch(
-    "/profile/update", response_model=SellerResponse,
+    "/me", response_model=SellerResponse,
     summary="Обновить профиль",
 )
 async def update_me(
@@ -26,7 +26,7 @@ async def update_me(
 
 
 @seller_router.delete(
-    "/profile/delete", status_code=status.HTTP_204_NO_CONTENT,
+    "/me", status_code=status.HTTP_204_NO_CONTENT,
     summary="Удалить аккаунт",
 )
 async def delete_me(

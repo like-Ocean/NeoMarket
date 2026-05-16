@@ -24,6 +24,7 @@ class InvoiceItemResponse(BaseModel):
     id: UUID
     sku_id: UUID
     quantity: int
+    accepted_quantity: int
 
 
 # Invoice
@@ -48,8 +49,21 @@ class InvoiceResponse(BaseModel):
     items: list[InvoiceItemResponse]
     created_at: datetime
     updated_at: datetime
+    accepted_at: datetime | None = None
+    accepted_by: UUID | None = None
 
 
-class InvoiceListResponse(BaseModel):
-    total: int
+class InvoicePaginatedResponse(BaseModel):
     items: list[InvoiceResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+
+class InvoiceAcceptItem(BaseModel):
+    invoice_item_id: UUID
+    accepted_quantity: int
+
+
+class InvoiceAcceptRequest(BaseModel):
+    accepted_items: list[InvoiceAcceptItem] | None = None

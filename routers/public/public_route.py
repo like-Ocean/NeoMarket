@@ -2,44 +2,40 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from schemas.category import CategoryResponse, CategoryTreeResponse
-from schemas.product import ProductPublicResponse, ProductPublicShortResponse, ProductPublicListResponse
+from core.dependencies import require_b2c_key
+from schemas.product import (
+    ProductPublicResponse, ProductPublicShortResponse,
+    ProductPublicPaginatedResponse, ProductBatchRequest
+)
 from schemas.sku import SKUPublicResponse
-from services import category_service, public_service, product_service
+from services import public_service, product_service
 
-public_router = APIRouter(prefix="/public", tags=["Public Catalog"])
-
-
-@public_router.get("/categories/tree", response_model=list[CategoryTreeResponse])
-async def get_categories_tree(db: AsyncSession = Depends(get_db)):
-    return await category_service.get_categories_tree(db)
-
-
-@public_router.get("/categories/{category_id}/breadcrumbs", response_model=list[CategoryResponse])
-async def get_breadcrumbs(
-    category_id: UUID, db: AsyncSession = Depends(get_db)
-):
-    return await category_service.get_breadcrumbs(db, category_id)
+public_router = APIRouter(
+    prefix="/public",
+    tags=["Public Catalog"],
+    dependencies=[Depends(require_b2c_key)],
+)
 
 
-@public_router.get("/products", response_model=ProductPublicListResponse)
+@public_router.get("/products", response_model=ProductPublicPaginatedResponse)
 async def get_products_public(
     category_id: UUID | None = None,
     search: str | None = None,
     min_price: int | None = Query(None, ge=0, description="Минимальная цена"),
     max_price: int | None = Query(None, ge=0, description="Максимальная цена"),
     seller_id: UUID | None = None,
-    page: int = Query(1, ge=1, description="Номер страницы"),
-    size: int = Query(20, ge=1, le=100, description="Товаров на странице"),
+    sort: str = Query("created_desc", description="Сортировка"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    offset = (page - 1) * size
     return await public_service.get_products_public(
-        db=db, limit=size, offset=offset,
+        db=db, limit=limit, offset=offset,
         category_id=category_id,
         search=search, min_price=min_price,
         max_price=max_price,
-        seller_id=seller_id
+        seller_id=seller_id,
+        sort=sort,
     )
 
 
@@ -55,6 +51,14 @@ async def get_product_public(
             detail="Товар не найден"
         )
     return product
+
+
+@public_router.post("/products/batch", response_model=list[ProductPublicResponse])
+async def get_products_public_batch(
+    data: ProductBatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await public_service.get_products_public_batch(db, data.product_ids)
 
 
 @public_router.get("/products/{product_id}/similar", response_model=list[ProductPublicShortResponse])

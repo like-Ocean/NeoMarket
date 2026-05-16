@@ -112,10 +112,9 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         price=data.price,
         discount=data.discount,
         cost_price=data.cost_price,
-        image=data.image,
         active_quantity=0,
         reserved_quantity=0,
-        article=data.article,
+        article=data.article
     )
     db.add(sku)
     await db.flush()
@@ -179,8 +178,19 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
 
     old_status = product.status
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    characteristics = payload.pop("characteristics", None)
+    for field, value in payload.items():
         setattr(sku, field, value)
+
+    if characteristics is not None:
+        sku.characteristics.clear()
+        for characteristic in characteristics:
+            db.add(SKUCharacteristic(
+                sku_id=sku.id,
+                name=characteristic.name,
+                value=characteristic.value,
+            ))
 
     if old_status in {ProductStatus.MODERATED, ProductStatus.BLOCKED}:
         product.status = ProductStatus.ON_MODERATION
@@ -216,7 +226,7 @@ async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
         )
     if sku.reserved_quantity > 0:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Нельзя удалить SKU с резервом",
         )
     await db.delete(sku)

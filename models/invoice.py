@@ -38,4 +38,12 @@ class Invoice(Base, TimestampMixin):
         back_populates="invoice", cascade="all, delete-orphan"
     )
 
+    @property
+    def accepted_at(self):
+        return None
+
+    @property
+    def accepted_by(self):
+        return None
+
 

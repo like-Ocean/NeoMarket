@@ -51,5 +51,5 @@ class SKU(Base, TimestampMixin):
 
     @property
     def stock_quantity(self) -> int:
-        return self.active_quantity
+        return self.active_quantity + self.reserved_quantity
 

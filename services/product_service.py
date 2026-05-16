@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import re
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +11,7 @@ from schemas.product import ProductCreate, ProductUpdate
 from services.public_service import get_product_by_id_public
 from services.outbox_service import add_outbox_event
 from models.sku import SKU
+from helpers.product_and_sku import _generate_unique_slug
 from core.config import settings
 
 
@@ -41,64 +41,92 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
     return product
 
 
-async def get_products(db: AsyncSession, limit: int = 20, offset: int = 0) -> dict:
-    total_result = await db.execute(
-        select(func.count(Product.id))
+async def get_products_by_seller(
+    db: AsyncSession, seller_id: UUID, 
+    limit: int = 20, offset: int = 0,
+    status: str | None = None,
+    include_deleted: bool = False
+) -> dict:
+    min_price_subq = (
+        select(SKU.product_id, func.min(SKU.price).label("min_price"))
+        .group_by(SKU.product_id)
+        .subquery()
     )
+    cover_image_subq = (
+        select(ProductImage.url)
+        .where(ProductImage.product_id == Product.id)
+        .order_by(ProductImage.ordering.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    query = (
+        select(Product, min_price_subq.c.min_price, cover_image_subq.label("cover_image"))
+        .outerjoin(min_price_subq, min_price_subq.c.product_id == Product.id)
+        .where(Product.seller_id == seller_id)
+        .order_by(Product.created_at.desc())
+    )
+    if status:
+        query = query.where(Product.status == status)
+    if not include_deleted:
+        query = query.where(Product.deleted == False)
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    result = await db.execute(
-        select(Product)
-        .order_by(Product.created_at.desc())
-        .limit(limit).offset(offset)
-    )
+    result = await db.execute(query.limit(limit).offset(offset))
+    items = []
+    for product, min_price_value, cover_image in result.all():
+        items.append({
+            "id": product.id,
+            "title": product.title,
+            "slug": product.slug,
+            "status": product.status,
+            "category_id": product.category_id,
+            "deleted": product.deleted,
+            "created_at": product.created_at,
+            "min_price": int(min_price_value) if min_price_value is not None else None,
+            "cover_image": cover_image,
+        })
 
     return {
-        "total": total,
-        "items": result.scalars().all(),
+        "items": items,
+        "total_count": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
-async def get_products_by_seller(
-    db: AsyncSession, seller_id: UUID, 
-    limit: int = 20, offset: int = 0
-) -> dict:
-    total_result = await db.execute(
-        select(func.count(Product.id)).where(Product.seller_id == seller_id)
-    )
-    total = total_result.scalar_one()
-    
-    result = await db.execute(
-        select(Product)
-        .where(Product.seller_id == seller_id)
-        .order_by(Product.created_at.desc())
-        .limit(limit).offset(offset)
-    )
-    
-    return {"total": total, "items": result.scalars().all()}
-
-
 async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) -> Product:
-    
     if data.title is None or (isinstance(data.title, str) and data.title.strip() == ""):
-        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "title is required"})
+        return JSONResponse(
+            status_code=400, 
+            content={"code": "INVALID_REQUEST", "message": "title is required"}
+        )
     if not isinstance(data.title, str) or len(data.title) < 1 or len(data.title) > 255:
-        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "title must be 1-255 characters"})
-
-    if data.images is None or not isinstance(data.images, list) or len(data.images) == 0:
-        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "At least one image is required"})
+        return JSONResponse(
+            status_code=400, 
+            content={"code": "INVALID_REQUEST", "message": "title must be 1-255 characters"}
+        )
 
     try:
         _ = UUID(str(data.category_id))
     except Exception:
-        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"})
+        return JSONResponse(
+            status_code=400, 
+            content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"}
+        )
 
     category_result = await db.execute(
         select(Category).where(Category.id == data.category_id)
     )
     category = category_result.scalar_one_or_none()
     if not category:
-        return JSONResponse(status_code=400, content={"code": "INVALID_REQUEST", "message": "Category not found"})
+        return JSONResponse(
+            status_code=400, 
+            content={"code": "INVALID_REQUEST", "message": "Category not found"}
+        )
 
     slug = data.slug or await _generate_unique_slug(db, data.title)
 
@@ -130,27 +158,6 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
     return await get_product_by_id(db, product.id)
 
 
-def _slugify(title: str) -> str:
-    cleaned = re.sub(r"[^\w\s-]", "", title, flags=re.UNICODE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
-    if not cleaned:
-        return "product"
-    return cleaned.replace(" ", "-")
-
-
-async def _generate_unique_slug(db: AsyncSession, title: str) -> str:
-    base = _slugify(title)
-    slug = base
-    suffix = 2
-
-    while True:
-        result = await db.execute(select(Product.id).where(Product.slug == slug))
-        if result.scalar_one_or_none() is None:
-            return slug
-        slug = f"{base}-{suffix}"
-        suffix += 1
-
-
 async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
     product = await get_product_by_id(db, product_id, seller_id=seller.id)
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
@@ -171,8 +178,19 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
 
     old_status = product.status
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    characteristics = payload.pop("characteristics", None)
+    for field, value in payload.items():
         setattr(product, field, value)
+
+    if characteristics is not None:
+        product.characteristics.clear()
+        for characteristic in characteristics:
+            db.add(ProductCharacteristic(
+                product_id=product.id,
+                name=characteristic.name,
+                value=characteristic.value,
+            ))
 
     if old_status in {ProductStatus.MODERATED, ProductStatus.BLOCKED}:
         product.status = ProductStatus.ON_MODERATION
@@ -232,6 +250,19 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     )
 
     await db.commit()
+
+
+async def get_product_skus(db: AsyncSession, product_id: UUID, seller_id: UUID) -> list[SKU]:
+    product = await get_product_by_id(db, product_id, seller_id=seller_id)
+    result = await db.execute(
+        select(SKU)
+        .options(
+            selectinload(SKU.images),
+            selectinload(SKU.characteristics),
+        )
+        .where(SKU.product_id == product.id)
+    )
+    return result.scalars().all()
 
 
 async def get_similar_products(db: AsyncSession,  product_id: UUID, limit: int = 10) -> list[Product]:

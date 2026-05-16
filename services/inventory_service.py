@@ -10,7 +10,10 @@ from services import outbox_service
 from core.config import settings
 
 
-async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -> dict:
+async def reserve(
+    db: AsyncSession, idempotency_key: UUID,
+    order_id: UUID, items: list[tuple]
+) -> dict:
     existing_result = await db.execute(
         select(ProcessedEvent).where(
             ProcessedEvent.sender_service == "inventory",
@@ -23,10 +26,16 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
             payload = json.loads(existing.response_cached or "{}")
             response_payload = payload.get("response")
             if response_payload:
-                return response_payload
+                return {"response": response_payload}
         except json.JSONDecodeError:
             pass
-        return {"reserved": True, "items": []}
+        return {
+            "response": {
+                "order_id": str(order_id),
+                "status": "RESERVED",
+                "reserved_at": datetime.now(timezone.utc).isoformat(),
+            }
+        }
 
     failed_items: list[dict] = []
     sku_by_id: dict[UUID, SKU] = {}
@@ -53,24 +62,24 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
 
     if failed_items:
         await db.rollback()
-        return {"reserved": False, "failed_items": failed_items}
+        return {
+            "error": {
+                "code": "CONFLICT",
+                "message": "Не удалось зарезервировать",
+                "details": {"failed_items": failed_items},
+            }
+        }
 
-    response_items: list[dict] = []
     for sku_id, qty in items:
         sku = sku_by_id[sku_id]
         sku.active_quantity -= qty
         sku.reserved_quantity += qty
-        response_items.append({
-            "sku_id": str(sku_id),
-            "reserved_quantity": qty,
-            "remaining_stock": sku.active_quantity,
-        })
 
         if sku.active_quantity == 0:
             await outbox_service.add_outbox_event(
                 db,
                 event_type="SKU_OUT_OF_STOCK",
-                target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
+                target_url=settings.B2C_SERVICE_URL,
                 payload={
                     "event": "SKU_OUT_OF_STOCK",
                     "product_id": str(sku.product_id),
@@ -79,7 +88,11 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
                 },
             )
 
-    response_payload = {"reserved": True, "items": response_items}
+    response_payload = {
+        "order_id": str(order_id),
+        "status": "RESERVED",
+        "reserved_at": datetime.now(timezone.utc).isoformat(),
+    }
     db.add(ProcessedEvent(
         sender_service="inventory",
         idempotency_key=idempotency_key,
@@ -87,6 +100,7 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
             {
                 "request": {
                     "idempotency_key": str(idempotency_key),
+                    "order_id": str(order_id),
                     "items": [
                         {"sku_id": str(sku_id), "quantity": qty}
                         for sku_id, qty in items
@@ -99,10 +113,25 @@ async def reserve(db: AsyncSession, idempotency_key: UUID, items: list[tuple]) -
     ))
 
     await db.commit()
-    return response_payload
+    return {"response": response_payload}
 
 
-async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> None:
+async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dict:
+    existing_result = await db.execute(
+        select(ProcessedEvent).where(
+            ProcessedEvent.sender_service == "inventory_unreserve",
+            ProcessedEvent.idempotency_key == order_id,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        cached = json.loads(existing.response_cached or "{}")
+        return cached or {
+            "order_id": str(order_id),
+            "status": "UNRESERVED",
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     for sku_id, qty in items:
         result = await db.execute(
             select(SKU).where(SKU.id == sku_id).with_for_update()
@@ -121,19 +150,36 @@ async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> Non
         sku.reserved_quantity -= qty
         sku.active_quantity += qty
 
+    response_payload = {
+        "order_id": str(order_id),
+        "status": "UNRESERVED",
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    db.add(ProcessedEvent(
+        sender_service="inventory_unreserve",
+        idempotency_key=order_id,
+        response_cached=json.dumps(response_payload, ensure_ascii=False),
+    ))
+
     await db.commit()
+    return response_payload
 
 
-async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> None:
+async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dict:
     existing_result = await db.execute(
         select(ProcessedEvent).where(
-            ProcessedEvent.sender_service == "inventory",
+            ProcessedEvent.sender_service == "inventory_fulfill",
             ProcessedEvent.idempotency_key == order_id,
         )
     )
     existing = existing_result.scalar_one_or_none()
     if existing:
-        return
+        cached = json.loads(existing.response_cached or "{}")
+        return cached or {
+            "order_id": str(order_id),
+            "status": "FULFILLED",
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     for sku_id, qty in items:
         result = await db.execute(
@@ -152,19 +198,16 @@ async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> None:
             )
         sku.reserved_quantity -= qty
 
+    response_payload = {
+        "order_id": str(order_id),
+        "status": "FULFILLED",
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }
     db.add(ProcessedEvent(
-        sender_service="inventory",
+        sender_service="inventory_fulfill",
         idempotency_key=order_id,
-        response_cached=json.dumps(
-            {
-                "order_id": str(order_id),
-                "items": [
-                    {"sku_id": str(sku_id), "quantity": qty}
-                    for sku_id, qty in items
-                ],
-            },
-            ensure_ascii=False,
-        ),
+        response_cached=json.dumps(response_payload, ensure_ascii=False),
     ))
 
     await db.commit()
+    return response_payload

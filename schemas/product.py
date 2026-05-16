@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from datetime import datetime
 from models.product import ProductStatus
-from schemas.sku import SKUShortResponse, SKUPublicShortResponse, SKUPublicResponse, SKUResponse
+from schemas.sku import SKUPublicResponse, SKUResponse
 
 
 # Images
@@ -22,12 +22,12 @@ class ProductImageResponse(BaseModel):
 
 # Characteristics
 
-class ProductCharacteristicCreate(BaseModel):
+class Characteristic(BaseModel):
     name: str
     value: str
 
 
-class ProductCharacteristicResponse(BaseModel):
+class CharacteristicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -43,13 +43,14 @@ class ProductCreate(BaseModel):
     slug: str | None = None
     description: str | None = None
     images: list[ProductImageCreate] = []
-    characteristics: list[ProductCharacteristicCreate] = []
+    characteristics: list[Characteristic] = []
 
 
 class ProductUpdate(BaseModel):
     category_id: UUID | None = None
     title: str | None = None
     description: str | None = None
+    characteristics: list[Characteristic] | None = None
 
 
 class ProductShortResponse(BaseModel):
@@ -61,9 +62,10 @@ class ProductShortResponse(BaseModel):
     slug: str
     status: ProductStatus
     category_id: UUID
-    created_at: datetime
     deleted: bool
-    blocked: bool
+    created_at: datetime
+    min_price: int | None = None
+    cover_image: str | None = None
 
 
 class ProductResponse(BaseModel):
@@ -78,11 +80,10 @@ class ProductResponse(BaseModel):
     description: str
     status: ProductStatus
     deleted: bool
-    blocked: bool
     blocking_reason_id: UUID | None
     moderator_comment: str | None
     images: list[ProductImageResponse]
-    characteristics: list[ProductCharacteristicResponse]
+    characteristics: list[CharacteristicResponse]
     skus: list[SKUResponse]
     created_at: datetime
     updated_at: datetime
@@ -90,9 +91,11 @@ class ProductResponse(BaseModel):
 
 # Paginated
 
-class ProductListResponse(BaseModel):
-    total: int
+class ProductPaginatedResponse(BaseModel):
     items: list[ProductShortResponse]
+    total_count: int
+    limit: int
+    offset: int
 
 
 class ProductPublicShortResponse(BaseModel):
@@ -103,6 +106,8 @@ class ProductPublicShortResponse(BaseModel):
     slug: str
     status: ProductStatus
     category_id: UUID
+    min_price: int
+    cover_image: str | None = None
     created_at: datetime
 
 
@@ -110,18 +115,25 @@ class ProductPublicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    seller_id: UUID
     category_id: UUID
     title: str
     slug: str
     description: str
     status: ProductStatus
     images: list[ProductImageResponse]
-    characteristics: list[ProductCharacteristicResponse]
-    skus: list[SKUPublicShortResponse]
+    characteristics: list[CharacteristicResponse]
+    skus: list[SKUPublicResponse]
     created_at: datetime
     updated_at: datetime
 
 
-class ProductPublicListResponse(BaseModel):
-    total: int
+class ProductPublicPaginatedResponse(BaseModel):
     items: list[ProductPublicShortResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+
+class ProductBatchRequest(BaseModel):
+    product_ids: list[UUID]

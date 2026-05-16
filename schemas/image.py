@@ -2,12 +2,19 @@ from pydantic import BaseModel
 from uuid import UUID
 
 
-class ProductImageCreateRequest(BaseModel):
-    url: str
+class ImageUploadRequest(BaseModel):
+    entity_type: str
+    entity_id: UUID | None = None
     ordering: int = 0
 
 
-class ProductImageUpdateRequest(BaseModel):
+class ImageAttachRequest(BaseModel):
+    image_id: UUID | None = None
+    url: str | None = None
+    ordering: int = 0
+
+
+class ImageUpdateRequest(BaseModel):
     url: str | None = None
     ordering: int | None = None
 
@@ -17,4 +24,4 @@ class ImageUploadResponse(BaseModel):
     url: str
     ordering: int
     entity_type: str
-    entity_id: UUID
+    entity_id: UUID | None

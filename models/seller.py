@@ -1,6 +1,6 @@
 import uuid
 from typing import TYPE_CHECKING
-from sqlalchemy import String
+from sqlalchemy import String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.database import TimestampMixin, Base
@@ -27,6 +27,7 @@ class Seller(Base, TimestampMixin):
     company_name: Mapped[str] = mapped_column(String(500), nullable=False)
     inn: Mapped[str] = mapped_column(String(12), nullable=False, unique=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Relationships
     products: Mapped[list["Product"]] = relationship(back_populates="seller")

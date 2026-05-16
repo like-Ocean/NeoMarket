@@ -6,12 +6,12 @@ from fastapi import HTTPException, status
 from models.processed_event import ProcessedEvent
 from models.product import Product, ProductStatus
 from models.sku import SKU
-from schemas.events import ProductEventRequest
+from schemas.events import ModerationEventRequest
 from services.outbox_service import add_outbox_event
 from core.config import settings
 
 
-async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> None:
+async def handle_moderation_event(db: AsyncSession, data: ModerationEventRequest) -> None:
     result = await db.execute(
         select(ProcessedEvent).where(
             ProcessedEvent.sender_service == "moderation",
@@ -35,7 +35,9 @@ async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> N
         product.moderator_comment = data.moderator_comment
         product.blocking_reason_id = None
     elif data.event_type == "BLOCKED":
-        product.status = ProductStatus.BLOCKED
+        product.status = (
+            ProductStatus.HARD_BLOCKED if data.hard_block else ProductStatus.BLOCKED
+        )
         product.blocked = True
         product.moderator_comment = data.moderator_comment
         product.blocking_reason_id = data.blocking_reason_id
@@ -48,29 +50,7 @@ async def handle_product_event(db: AsyncSession, data: ProductEventRequest) -> N
         await add_outbox_event(
             db=db,
             event_type="PRODUCT_BLOCKED",
-            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
-            payload={
-                "event": "PRODUCT_BLOCKED",
-                "product_id": str(product.id),
-                "sku_ids": sku_ids,
-                "date": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-    elif data.event_type == "HARD_BLOCKED":
-        product.status = ProductStatus.HARD_BLOCKED
-        product.blocked = True
-        product.moderator_comment = data.moderator_comment
-        product.blocking_reason_id = data.blocking_reason_id
-
-        sku_result = await db.execute(
-            select(SKU.id).where(SKU.product_id == product.id)
-        )
-        sku_ids = [str(sku_id) for sku_id in sku_result.scalars().all()]
-
-        await add_outbox_event(
-            db=db,
-            event_type="PRODUCT_BLOCKED",
-            target_url=settings.B2C_SERVICE_URL, #TODO: ВОТ ЭТО ГОВНО МБ ВЫЗОВЕТ ОШИБКУ ИЛИ НЕ БУДЕТ РАБОТАТЬ КАК НУЖНО, СМОТРИ КАК СДЕЛАНО ВЫШЕ, НУЖНО НАПИСАТЬ НОРМАЛЬНЫЙ URL
+            target_url=settings.B2C_SERVICE_URL,
             payload={
                 "event": "PRODUCT_BLOCKED",
                 "product_id": str(product.id),

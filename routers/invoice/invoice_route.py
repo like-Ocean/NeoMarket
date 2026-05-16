@@ -4,18 +4,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.dependencies import get_current_seller
 from models.seller import Seller
-from schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceListResponse
+from schemas.invoice import (
+    InvoiceCreate, InvoiceResponse,
+    InvoicePaginatedResponse,
+    InvoiceAcceptRequest
+)
 from services import invoice_service
 
 invoice_router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
 
-@invoice_router.get("", response_model=InvoiceListResponse, summary="Список накладных")
+@invoice_router.get("", response_model=InvoicePaginatedResponse, summary="Список накладных")
 async def get_invoices(
-    limit: int = 20, offset: int = 0, db: AsyncSession = Depends(get_db),
+    limit: int = 20, offset: int = 0,
+    status: str | None = None,
+    db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller)
 ):
-    return await invoice_service.get_invoices(db, current_seller.id, limit, offset)
+    return await invoice_service.get_invoices(
+        db=db,
+        seller_id=current_seller.id,
+        limit=limit,
+        offset=offset,
+        status=status
+    )
 
 
 @invoice_router.get("/{invoice_id}", response_model=InvoiceResponse, summary="Получить накладную")
@@ -46,10 +58,12 @@ async def create_invoice(
     summary="Принять накладную — пополнить остатки SKU"
 )
 async def accept_invoice(
-    invoice_id: UUID, db: AsyncSession = Depends(get_db),
+    invoice_id: UUID,
+    data: InvoiceAcceptRequest | None = None,
+    db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
 ):
-    return await invoice_service.accept_invoice(db, invoice_id, current_seller)
+    return await invoice_service.accept_invoice(db, invoice_id, current_seller, data)
 
 
 @invoice_router.delete(

@@ -86,7 +86,7 @@ app.add_middleware(
 
 
 for router in routes:
-    app.include_router(router, prefix="/api")
+    app.include_router(router, prefix="/api/v1")
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

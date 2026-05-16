@@ -1,63 +1,54 @@
 from uuid import UUID
-from typing import Union
 from fastapi import APIRouter, Depends, status, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
-from core.dependencies import get_current_seller, get_current_seller_optional, require_internal_token
-from core.config import settings
+from core.dependencies import (
+    get_current_seller, get_current_seller_optional,
+    require_b2c_key
+)
 from models.seller import Seller
-from schemas.image import ProductImageUpdateRequest
+from schemas.image import ImageAttachRequest, ImageUpdateRequest
 from schemas.product import (
     ProductCreate, ProductResponse,
-    ProductListResponse, ProductUpdate, ProductImageResponse,
-    ProductPublicListResponse, ProductPublicResponse
+    ProductPaginatedResponse, ProductUpdate, ProductImageResponse,
+    ProductPublicResponse
 )
-from schemas.events import ProductEventRequest
+from schemas.sku import SKUResponse
 from services import product_service, image_service
 from services import public_service
-from services.moderation_service import handle_product_event
 
 
 product_router = APIRouter(prefix="/products", tags=["Products"])
 
 
-@product_router.get("", response_model=ProductListResponse | ProductPublicListResponse)
+@product_router.get("", response_model=ProductPaginatedResponse)
 async def get_products(
     limit: int = 20, offset: int = 0,
+    status: str | None = None,
+    include_deleted: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_seller: Seller | None = Depends(get_current_seller_optional),
-    x_service_key: str | None = Header(default=None, alias="X-Service-Key"),
+    current_seller: Seller = Depends(get_current_seller),
 ):
-    if x_service_key:
-        if x_service_key != settings.MOD_SERVICE_KEY:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
-        return await product_service.get_products(db, limit, offset)
-
-    if current_seller:
-        return await product_service.get_products_by_seller(db, current_seller.id, limit, offset)
-
-    return await public_service.get_products_public(db=db, limit=limit, offset=offset)
+    return await product_service.get_products_by_seller(
+        db=db,
+        seller_id=current_seller.id,
+        limit=limit,
+        offset=offset,
+        status=status,
+        include_deleted=include_deleted,
+    )
 
 
 @product_router.post(
     "", response_model=ProductResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Создать товар",
+    summary="Создать товар"
 )
 async def create_product(
     data: ProductCreate, db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
 ):
     return await product_service.create_product(db, current_seller, data)
-
-
-@product_router.get("/my", response_model=ProductListResponse)
-async def get_my_products(
-    limit: int = 20, offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
-):
-    return await product_service.get_products_by_seller(db, current_seller.id, limit, offset)
 
 
 @product_router.get(
@@ -70,17 +61,18 @@ async def get_product(
     x_service_key: str | None = Header(default=None, alias="X-Service-Key"),
 ):
     if x_service_key:
-        if x_service_key != settings.MOD_SERVICE_KEY:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
-        return await product_service.get_product_by_id(db, product_id)
+        await require_b2c_key(x_service_key)
+        product = await public_service.get_product_by_id_public(db, product_id)
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
+        return product
 
-    if current_seller:
-        return await product_service.get_product_by_id(db, product_id, seller_id=current_seller.id)
+    if not current_seller:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован")
 
-    product = await public_service.get_product_by_id_public(db, product_id)
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
-    return product
+    return await product_service.get_product_by_id(
+        db, product_id, seller_id=current_seller.id
+    )
 
 
 @product_router.patch(
@@ -88,18 +80,6 @@ async def get_product(
     summary="Обновить товар",
 )
 async def update_product(
-    product_id: UUID, data: ProductUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
-):
-    return await product_service.update_product(db, product_id, current_seller, data)
-
-
-@product_router.put(
-    "/{product_id}", response_model=ProductResponse,
-    summary="Обновить товар (PUT)",
-)
-async def update_product_put(
     product_id: UUID, data: ProductUpdate,
     db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
@@ -119,19 +99,42 @@ async def delete_product(
     await product_service.delete_product(db, product_id, current_seller)
 
 
-@product_router.post(
-    "/events",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="События модерации товара",
+@product_router.get(
+    "/{product_id}/skus",
+    response_model=list[SKUResponse],
+    summary="Все SKU товара"
 )
-async def product_events(
-    data: ProductEventRequest,
+async def list_product_skus(
+    product_id: UUID,
     db: AsyncSession = Depends(get_db),
-    x_service_key: str = Header(alias="X-Service-Key")
+    current_seller: Seller = Depends(get_current_seller),
 ):
-    if x_service_key != settings.MOD_SERVICE_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
-    await handle_product_event(db, data)
+    return await product_service.get_product_skus(
+        db=db,
+        product_id=product_id,
+        seller_id=current_seller.id
+    )
+
+
+@product_router.post(
+    "/{product_id}/images",
+    response_model=ProductImageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Прикрепить изображение к товару"
+)
+async def add_product_image(
+    product_id: UUID, data: ImageAttachRequest,
+    db: AsyncSession = Depends(get_db),
+    current_seller: Seller = Depends(get_current_seller),
+):
+    return await image_service.attach_product_image(
+        db=db,
+        product_id=product_id,
+        seller_id=current_seller.id,
+        image_id=data.image_id,
+        url=data.url,
+        ordering=data.ordering
+    )
 
 
 @product_router.patch(
@@ -140,7 +143,7 @@ async def product_events(
     summary="Обновить изображение товара",
 )
 async def update_product_image(
-    image_id: UUID, data: ProductImageUpdateRequest,
+    image_id: UUID, data: ImageUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_seller: Seller = Depends(get_current_seller),
 ):

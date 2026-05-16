@@ -7,7 +7,7 @@ from models.invoice_item import InvoiceItem
 from models.sku import SKU
 from models.product import Product
 from models.seller import Seller
-from schemas.invoice import InvoiceCreate
+from schemas.invoice import InvoiceCreate, InvoiceAcceptRequest
 
 
 async def get_invoice_by_id(db: AsyncSession, invoice_id, seller_id=None) -> Invoice:
@@ -32,23 +32,31 @@ async def get_invoice_by_id(db: AsyncSession, invoice_id, seller_id=None) -> Inv
     return invoice
 
 
-async def get_invoices(db: AsyncSession, seller_id, limit: int = 20, offset: int = 0) -> dict:
-    total_result = await db.execute(
-        select(func.count(Invoice.id)).where(Invoice.seller_id == seller_id)
-    )
+async def get_invoices(
+    db: AsyncSession, seller_id,
+    limit: int = 20, offset: int = 0,
+    status: str | None = None
+) -> dict:
+    count_query = select(func.count(Invoice.id)).where(Invoice.seller_id == seller_id)
+    if status:
+        count_query = count_query.where(Invoice.status == status)
+    total_result = await db.execute(count_query)
     total = total_result.scalar_one()
-    result = await db.execute(
+    query = (
         select(Invoice)
         .options(selectinload(Invoice.items))
         .where(Invoice.seller_id == seller_id)
         .order_by(Invoice.created_at.desc())
-        .limit(limit)
-        .offset(offset)
     )
+    if status:
+        query = query.where(Invoice.status == status)
+    result = await db.execute(query.limit(limit).offset(offset))
 
     return {
-        "total": total,
         "items": result.scalars().all(),
+        "total_count": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -95,7 +103,10 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
     return await get_invoice_by_id(db, invoice.id)
 
 
-async def accept_invoice(db: AsyncSession, invoice_id, seller: Seller) -> Invoice:
+async def accept_invoice(
+    db: AsyncSession, invoice_id,
+    seller: Seller, data: InvoiceAcceptRequest | None = None
+) -> Invoice:
     invoice = await get_invoice_by_id(db, invoice_id, seller_id=seller.id)
     if invoice.status == InvoiceStatus.ACCEPTED:
         raise HTTPException(

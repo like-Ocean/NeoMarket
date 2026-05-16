@@ -2,109 +2,123 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
-
 from services.file_service import delete_file_from_disk
 from models.sku import SKU
 from models.sku_image import SKUImage
 from models.product_image import ProductImage
-from models.product import Product
-
-
-async def _get_product_for_seller(db: AsyncSession, product_id: UUID, seller_id: UUID) -> Product:
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
-    if product.seller_id != seller_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа")
-    return product
-
-
-async def _get_sku_for_seller(db: AsyncSession, sku_id: UUID, seller_id: UUID) -> SKU:
-    result = await db.execute(select(SKU).where(SKU.id == sku_id))
-    sku = result.scalar_one_or_none()
-    if not sku:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
-
-    await _get_product_for_seller(db, sku.product_id, seller_id)
-    return sku
-
-
-async def _get_product_image(db: AsyncSession, image_id: UUID, seller_id: UUID) -> ProductImage:
-    result = await db.execute(
-        select(ProductImage).where(ProductImage.id == image_id)
-    )
-    image = result.scalar_one_or_none()
-    if not image:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Изображение не найдено")
-
-    product_result = await db.execute(
-        select(Product).where(Product.id == image.product_id)
-    )
-    product = product_result.scalar_one_or_none()
-    if not product or product.seller_id != seller_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа")
-
-    return image
-
-
-async def _get_sku_image(db: AsyncSession, image_id: UUID, seller_id: UUID) -> SKUImage:
-    result = await db.execute(
-        select(SKUImage).where(SKUImage.id == image_id)
-    )
-    image = result.scalar_one_or_none()
-    if not image:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Изображение не найдено")
-
-    sku_result = await db.execute(
-        select(SKU).where(SKU.id == image.sku_id)
-    )
-    sku = sku_result.scalar_one_or_none()
-    if not sku:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
-
-    product_result = await db.execute(
-        select(Product).where(Product.id == sku.product_id)
-    )
-    product = product_result.scalar_one_or_none()
-    if not product or product.seller_id != seller_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа")
-
-    return image
+from helpers.product_and_sku import (
+    _get_product_for_seller, _get_sku_for_seller,
+    _get_product_image, _get_sku_image, _resolve_uploaded_image
+)
+from models.uploaded_image import UploadedImage
 
 
 async def add_product_image(
     db: AsyncSession, product_id: UUID,
-    seller_id: UUID, url: str,
-    ordering: int = 0,
+    seller_id: UUID, url: str, ordering: int = 0
 ) -> ProductImage:
     await _get_product_for_seller(db, product_id, seller_id)
 
     image = ProductImage(product_id=product_id, url=url, ordering=ordering)
     db.add(image)
+    
     await db.commit()
     await db.refresh(image)
+    
     return image
 
 
-async def add_sku_image(
+async def create_uploaded_image(
+    db: AsyncSession, url: str,
+    entity_type: str, entity_id: UUID | None,
+    ordering: int = 0
+) -> UploadedImage:
+    uploaded = UploadedImage(
+        url=url,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        ordering=ordering
+    )
+    db.add(uploaded)
+    
+    await db.commit()
+    await db.refresh(uploaded)
+    
+    return uploaded
+
+
+async def attach_product_image(
+    db: AsyncSession, product_id: UUID,
+    seller_id: UUID, image_id: UUID | None,
+    url: str | None, ordering: int = 0
+) -> ProductImage:
+    await _get_product_for_seller(db, product_id, seller_id)
+
+    if image_id:
+        uploaded = await _resolve_uploaded_image(db, image_id, "PRODUCT")
+        url = uploaded.url
+        ordering = uploaded.ordering if ordering == 0 else ordering
+        await db.delete(uploaded)
+
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нужно передать image_id или url",
+        )
+
+    image = ProductImage(product_id=product_id, url=url, ordering=ordering)
+    db.add(image)
+    
+    await db.commit()
+    await db.refresh(image)
+    
+    return image
+
+
+async def attach_sku_image(
     db: AsyncSession, sku_id: UUID,
-    seller_id: UUID, url: str,
-    ordering: int = 0,
+    seller_id: UUID, image_id: UUID | None,
+    url: str | None, ordering: int = 0
 ) -> SKUImage:
+    await _get_sku_for_seller(db, sku_id, seller_id)
+
+    if image_id:
+        uploaded = await _resolve_uploaded_image(db, image_id, "SKU")
+        url = uploaded.url
+        ordering = uploaded.ordering if ordering == 0 else ordering
+        await db.delete(uploaded)
+
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нужно передать image_id или url",
+        )
+
+    image = SKUImage(sku_id=sku_id, url=url, ordering=ordering)
+    db.add(image)
+    
+    await db.commit()
+    await db.refresh(image)
+    
+    return image
+
+
+async def add_sku_image(db: AsyncSession, sku_id: UUID, seller_id: UUID, url: str, ordering: int = 0) -> SKUImage:
     await _get_sku_for_seller(db, sku_id, seller_id)
 
     image = SKUImage(sku_id=sku_id, url=url, ordering=ordering)
     db.add(image)
+    
     await db.commit()
     await db.refresh(image)
+    
     return image
 
 
 async def update_product_image(
     db: AsyncSession, image_id: UUID,
     seller_id: UUID, url: str | None = None,
-    ordering: int | None = None,
+    ordering: int | None = None
 ) -> ProductImage:
     if url is None and ordering is None:
         raise HTTPException(
@@ -120,6 +134,7 @@ async def update_product_image(
 
     await db.commit()
     await db.refresh(image)
+    
     return image
 
 
@@ -153,7 +168,7 @@ async def update_product_image_ordering(
         db=db,
         image_id=image_id,
         seller_id=seller_id,
-        ordering=ordering,
+        ordering=ordering
     )
 
 
@@ -175,7 +190,7 @@ async def update_sku_image_ordering(
         db=db,
         image_id=image_id,
         seller_id=seller_id,
-        ordering=ordering,
+        ordering=ordering
     )
 
 

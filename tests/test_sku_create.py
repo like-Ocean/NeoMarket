@@ -5,6 +5,8 @@ from fastapi import HTTPException
 
 from core.config import settings
 from models.product import Product, ProductStatus
+from models.sku_image import SKUImage
+from models.sku_characteristic import SKUCharacteristic
 from models.seller import Seller
 from schemas.sku import SKUCreate
 from services import sku_service
@@ -48,18 +50,112 @@ def _build_product(seller_id, status: ProductStatus) -> Product:
     )
 
 
-def _build_sku_payload(product_id) -> SKUCreate:
+def _build_sku_payload(
+    product_id,
+    article: str | None = None,
+    images: list[dict] | None = None,
+    characteristics: list[dict] | None = None,
+) -> SKUCreate:
     return SKUCreate(
         product_id=product_id,
         name="SKU A",
         price=1000,
         discount=0,
         cost_price=None,
-        image=None,
-        article=None,
-        images=[],
-        characteristics=[],
+        article=article,
+        images=images or [],
+        characteristics=characteristics or [],
     )
+
+
+@pytest.mark.asyncio
+async def test_add_sku_product_not_found_returns_404():
+    seller = _build_seller()
+    payload = _build_sku_payload(uuid4())
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_ScalarResult(scalar_value=None)])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await sku_service.create_sku(db, seller, payload)
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_add_sku_wrong_seller_returns_404():
+    seller = _build_seller()
+    product = _build_product(uuid4(), ProductStatus.CREATED)
+    payload = _build_sku_payload(product.id)
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_ScalarResult(scalar_value=product)])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await sku_service.create_sku(db, seller, payload)
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_add_sku_to_on_moderation_returns_403():
+    seller = _build_seller()
+    product = _build_product(seller.id, ProductStatus.ON_MODERATION)
+    payload = _build_sku_payload(product.id)
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_ScalarResult(scalar_value=product)])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await sku_service.create_sku(db, seller, payload)
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_add_sku_with_duplicate_article_returns_409():
+    seller = _build_seller()
+    product = _build_product(seller.id, ProductStatus.CREATED)
+    payload = _build_sku_payload(product.id, article="ART-1")
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[
+        _ScalarResult(scalar_value=product),
+        _ScalarResult(scalar_value=object()),
+    ])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await sku_service.create_sku(db, seller, payload)
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_add_sku_creates_images_and_characteristics():
+    seller = _build_seller()
+    product = _build_product(seller.id, ProductStatus.CREATED)
+    payload = _build_sku_payload(
+        product.id,
+        images=[{"url": "http://img/1.jpg", "ordering": 1}],
+        characteristics=[{"name": "Color", "value": "Black"}],
+    )
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[
+        _ScalarResult(scalar_value=product),
+        _ScalarResult(scalar_one_value=1),
+    ])
+    db.add = Mock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+
+    with patch("services.sku_service.get_sku_by_id", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = AsyncMock()
+        await sku_service.create_sku(db, seller, payload)
+
+    added_types = [type(call.args[0]) for call in db.add.call_args_list]
+    assert SKUImage in added_types
+    assert SKUCharacteristic in added_types
 
 
 @pytest.mark.asyncio

@@ -10,14 +10,19 @@ def normalize_email(email: str) -> str:
 
 
 async def get_seller_by_id(db: AsyncSession, seller_id) -> Seller | None:
-    result = await db.execute(select(Seller).where(Seller.id == seller_id))
+    result = await db.execute(
+        select(Seller).where(Seller.id == seller_id, Seller.is_deleted == False)
+    )
     return result.scalar_one_or_none()
 
 
 async def get_seller_by_email(db: AsyncSession, email: str) -> Seller | None:
     normalized_email = normalize_email(email)
     result = await db.execute(
-        select(Seller).where(func.lower(Seller.email) == normalized_email)
+        select(Seller).where(
+            func.lower(Seller.email) == normalized_email,
+            Seller.is_deleted == False,
+        )
     )
     return result.scalar_one_or_none()
 
@@ -48,5 +53,5 @@ async def update_seller(db: AsyncSession, seller: Seller, data: SellerUpdate) ->
 
 # TODO: сделать флаг is_deleted для того чтобы не удалять пользователей
 async def delete_seller(db: AsyncSession, seller: Seller) -> None:
-    await db.delete(seller)
+    seller.is_deleted = True
     await db.commit()

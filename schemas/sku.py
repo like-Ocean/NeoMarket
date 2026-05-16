@@ -41,7 +41,6 @@ class SKUCreate(BaseModel):
     price: int
     discount: int = 0
     cost_price: int | None = None
-    image: str | None = None
     article: str | None = None
     images: list[SKUImageCreate] = []
     characteristics: list[SKUCharacteristicCreate] = []
@@ -74,8 +73,8 @@ class SKUUpdate(BaseModel):
     price: int | None = None
     discount: int | None = None
     cost_price: int | None = None
-    image: str | None = None
     article: str | None = None
+    characteristics: list[SKUCharacteristicCreate] | None = None
 
     @field_validator("price")
     @classmethod
@@ -108,7 +107,6 @@ class SKUResponse(BaseModel):
     price: int
     discount: int
     cost_price: int | None
-    image: str | None
     stock_quantity: int
     active_quantity: int
     reserved_quantity: int
@@ -127,7 +125,6 @@ class SKUShortResponse(BaseModel):
     name: str
     price: int
     discount: int
-    image: str | None
     stock_quantity: int
     active_quantity: int
     article: str | None
@@ -141,7 +138,6 @@ class SKUPublicResponse(BaseModel):
     name: str
     price: int
     discount: int
-    image: str | None
     stock_quantity: int
     active_quantity: int
     article: str | None
@@ -156,7 +152,6 @@ class SKUPublicShortResponse(BaseModel):
     name: str
     price: int
     discount: int
-    image: str | None
     stock_quantity: int
     active_quantity: int
     article: str | None
