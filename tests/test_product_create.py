@@ -1,4 +1,5 @@
 import asyncio
+import json
 import pytest
 from uuid import UUID, uuid4
 from httpx import AsyncClient, ASGITransport
@@ -9,6 +10,10 @@ from main import app
 from models.category import Category
 from models.product import Product, ProductStatus
 from models.seller import Seller
+from models.invoice_item import InvoiceItem
+from core.config import settings
+from models.outbox_event import OutboxEvent
+from models.sku import SKU
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -60,6 +65,11 @@ async def test_context(db_session):
     try:
         yield {"seller": seller, "category": category}
     finally:
+        await db_session.execute(delete(OutboxEvent))
+        await db_session.execute(delete(InvoiceItem))
+        await db_session.execute(delete(SKU).where(
+            SKU.product_id.in_(select(Product.id).where(Product.seller_id == seller.id))
+        ))
         await db_session.execute(delete(Product).where(Product.seller_id == seller.id))
         await db_session.execute(delete(Category).where(Category.id == category.id))
         await db_session.execute(delete(Seller).where(Seller.id == seller.id))
@@ -96,10 +106,37 @@ async def valid_product_payload(test_context):
     }
 
 
+@pytest.fixture
+async def product_factory(db_session, test_context):
+    async def _factory(status: ProductStatus = ProductStatus.CREATED) -> Product:
+        product = Product(
+            id=uuid4(),
+            seller_id=test_context["seller"].id,
+            category_id=test_context["category"].id,
+            title="Test product",
+            slug=f"test-product-{uuid4()}",
+            description="",
+            status=status,
+            deleted=False,
+            blocked=False,
+        )
+        db_session.add(product)
+        await db_session.commit()
+        await db_session.refresh(product)
+        return product
+
+    return _factory
+
+
+@pytest.fixture
+async def product(product_factory):
+    return await product_factory()
+
+
 async def test_create_product_returns_201_with_created_status(
     client, valid_product_payload, test_context
 ):
-    response = await client.post("/api/products", json=valid_product_payload)
+    response = await client.post("/api/v1/products", json=valid_product_payload)
 
     assert response.status_code == 201
     data = response.json()
@@ -114,7 +151,7 @@ async def test_seller_id_taken_from_jwt(
     payload_with_seller = valid_product_payload.copy()
     payload_with_seller["seller_id"] = str(uuid4())
 
-    response = await client.post("/api/products", json=payload_with_seller)
+    response = await client.post("/api/v1/products", json=payload_with_seller)
 
     assert response.status_code == 201
     data = response.json()
@@ -131,7 +168,7 @@ async def test_missing_images_returns_400(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload.pop("images")
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 400
     data = response.json()
@@ -142,7 +179,7 @@ async def test_missing_category_returns_400(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload["category_id"] = str(uuid4())
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 400
     data = response.json()
@@ -153,7 +190,7 @@ async def test_missing_category_id_returns_422(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload.pop("category_id")
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 422
     detail = response.json()["detail"]
@@ -164,7 +201,7 @@ async def test_empty_title_returns_400(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload["title"] = " "
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 400
     data = response.json()
@@ -175,7 +212,7 @@ async def test_title_too_long_returns_400(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload["title"] = "a" * 256
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 400
     data = response.json()
@@ -186,8 +223,113 @@ async def test_invalid_category_uuid_returns_422(client, valid_product_payload):
     payload = valid_product_payload.copy()
     payload["category_id"] = "not-a-uuid"
 
-    response = await client.post("/api/products", json=payload)
+    response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert any(item["loc"][-1] == "category_id" for item in detail)
+
+
+async def test_delete_sets_deleted_true(client, product, db_session):
+    response = await client.delete(f"/api/v1/products/{product.id}")
+
+    assert response.status_code == 204
+    await db_session.refresh(product)
+    assert product.deleted is True
+
+
+async def test_delete_emits_event_to_moderation(client, product, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "MODERATION_SERVICE_URL", "http://moderation")
+    await db_session.execute(delete(OutboxEvent))
+    await db_session.commit()
+
+    response = await client.delete(f"/api/v1/products/{product.id}")
+
+    assert response.status_code == 204
+    result = await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "DELETED")
+    )
+    events = result.scalars().all()
+    assert len(events) == 1
+
+    event = events[0]
+    assert event.target_url == "http://moderation/api/v1/events/product"
+
+    payload = json.loads(event.payload)
+    assert payload["product_id"] == str(product.id)
+    assert payload["seller_id"] == str(product.seller_id)
+    assert payload["event"] == "DELETED"
+    assert "date" in payload
+
+
+async def test_delete_emits_product_deleted_to_b2c(client, product, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "B2C_SERVICE_URL", "http://b2c")
+    await db_session.execute(delete(OutboxEvent))
+    await db_session.commit()
+
+    sku1 = SKU(
+        id=uuid4(),
+        product_id=product.id,
+        name="SKU 1",
+        price=1000,
+        discount=0,
+        cost_price=None,
+        active_quantity=0,
+        reserved_quantity=0,
+        article=None,
+    )
+    sku2 = SKU(
+        id=uuid4(),
+        product_id=product.id,
+        name="SKU 2",
+        price=1100,
+        discount=0,
+        cost_price=None,
+        active_quantity=0,
+        reserved_quantity=0,
+        article=None,
+    )
+    db_session.add_all([sku1, sku2])
+    await db_session.commit()
+
+    response = await client.delete(f"/api/v1/products/{product.id}")
+
+    assert response.status_code == 204
+    result = await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "PRODUCT_DELETED")
+    )
+    events = result.scalars().all()
+    assert len(events) == 1
+
+    event = events[0]
+    assert event.target_url == "http://b2c"
+
+    payload = json.loads(event.payload)
+    assert payload["product_id"] == str(product.id)
+    assert sorted(payload["sku_ids"]) == sorted([str(sku1.id), str(sku2.id)])
+    assert payload["event"] == "PRODUCT_DELETED"
+    assert "date" in payload
+
+
+async def test_delete_already_deleted_returns_400(client, product, db_session):
+    response = await client.delete(f"/api/v1/products/{product.id}")
+    assert response.status_code == 204
+
+    response = await client.delete(f"/api/v1/products/{product.id}")
+    assert response.status_code == 400
+
+
+async def test_deleted_product_not_in_seller_list(client, product_factory, db_session):
+    deleted_product = await product_factory(status=ProductStatus.CREATED)
+    active_product = await product_factory(status=ProductStatus.CREATED)
+
+    response = await client.delete(f"/api/v1/products/{deleted_product.id}")
+    assert response.status_code == 204
+
+    response = await client.get("/api/v1/products")
+    assert response.status_code == 200
+
+    items = response.json()["items"]
+    item_ids = {item["id"] for item in items}
+    assert str(deleted_product.id) not in item_ids
+    assert str(active_product.id) in item_ids

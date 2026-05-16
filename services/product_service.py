@@ -218,6 +218,12 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
 async def delete_product(db: AsyncSession, product_id, seller: Seller):
     product = await get_product_by_id(db, product_id, seller_id=seller.id)
 
+    if product.deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Товар уже удален",
+        )
+
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
