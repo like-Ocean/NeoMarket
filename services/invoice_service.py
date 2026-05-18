@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from models.invoice import Invoice, InvoiceStatus
 from models.invoice_item import InvoiceItem
 from models.sku import SKU
-from models.product import Product
+from models.product import Product, ProductStatus
 from models.seller import Seller
 from schemas.invoice import InvoiceCreate, InvoiceAcceptRequest
 
@@ -61,6 +61,12 @@ async def get_invoices(
 
 
 async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) -> Invoice:
+    if not data.items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Накладная должна содержать хотя бы одну позицию",
+        )
+
     for item in data.items:
         sku_result = await db.execute(
             select(SKU)
@@ -78,10 +84,20 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
             select(Product).where(Product.id == sku.product_id)
         )
         product = product_result.scalar_one_or_none()
-        if not product or product.seller_id != seller.id:
+        if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"SKU {item.sku_id} не найден",
+            )
+        if product.seller_id != seller.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Нет доступа",
+            )
+        if product.status != ProductStatus.MODERATED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="SKU товара не прошел модерацию",
             )
 
     invoice = Invoice(

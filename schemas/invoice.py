@@ -32,13 +32,6 @@ class InvoiceItemResponse(BaseModel):
 class InvoiceCreate(BaseModel):
     items: list[InvoiceItemCreate]
 
-    @field_validator("items")
-    @classmethod
-    def items_must_not_be_empty(cls, v: list) -> list:
-        if not v:
-            raise ValueError("Накладная должна содержать хотя бы одну позицию")
-        return v
-
 
 class InvoiceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
