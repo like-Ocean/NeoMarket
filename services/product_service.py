@@ -46,6 +46,7 @@ async def get_products_by_seller(
     db: AsyncSession, seller_id: UUID, 
     limit: int = 20, offset: int = 0,
     status: str | None = None,
+    search: str | None = None,
     include_deleted: bool = False
 ) -> dict:
     min_price_subq = (
@@ -69,6 +70,8 @@ async def get_products_by_seller(
     )
     if status:
         query = query.where(Product.status == status)
+    if search:
+        query = query.where(Product.title.ilike(f"%{search}%"))
     if not include_deleted:
         query = query.where(Product.deleted == False)
 

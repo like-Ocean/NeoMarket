@@ -25,9 +25,10 @@ product_router = APIRouter(prefix="/products", tags=["Products"])
 async def get_products(
     limit: int = 20, offset: int = 0,
     status: str | None = None,
+    search: str | None = None,
     include_deleted: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
+    current_seller: Seller = Depends(get_current_seller)
 ):
     return await product_service.get_products_by_seller(
         db=db,
@@ -35,7 +36,8 @@ async def get_products(
         limit=limit,
         offset=offset,
         status=status,
-        include_deleted=include_deleted,
+        search=search,
+        include_deleted=include_deleted
     )
 
 
@@ -58,7 +60,7 @@ async def create_product(
 async def get_product(
     product_id: UUID, db: AsyncSession = Depends(get_db),
     current_seller: Seller | None = Depends(get_current_seller_optional),
-    x_service_key: str | None = Header(default=None, alias="X-Service-Key"),
+    x_service_key: str | None = Header(default=None, alias="X-Service-Key")
 ):
     if x_service_key:
         await require_b2c_key(x_service_key)
@@ -90,11 +92,11 @@ async def update_product(
 @product_router.delete(
     "/{product_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Удалить товар",
+    summary="Удалить товар"
 )
 async def delete_product(
     product_id: UUID, db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
+    current_seller: Seller = Depends(get_current_seller)
 ):
     await product_service.delete_product(db, product_id, current_seller)
 
@@ -107,7 +109,7 @@ async def delete_product(
 async def list_product_skus(
     product_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
+    current_seller: Seller = Depends(get_current_seller)
 ):
     return await product_service.get_product_skus(
         db=db,
@@ -128,11 +130,9 @@ async def add_product_image(
     current_seller: Seller = Depends(get_current_seller),
 ):
     return await image_service.attach_product_image(
-        db=db,
-        product_id=product_id,
+        db=db, product_id=product_id,
         seller_id=current_seller.id,
-        image_id=data.image_id,
-        url=data.url,
+        image_id=data.image_id, url=data.url,
         ordering=data.ordering
     )
 
@@ -150,7 +150,7 @@ async def update_product_image(
     return await image_service.update_product_image(
         db=db, image_id=image_id,
         seller_id=current_seller.id,
-        url=data.url, ordering=data.ordering,
+        url=data.url, ordering=data.ordering
     )
 
 
@@ -160,6 +160,6 @@ async def update_product_image(
 )
 async def delete_product_image(
     image_id: UUID, db: AsyncSession = Depends(get_db),
-    current_seller: Seller = Depends(get_current_seller),
+    current_seller: Seller = Depends(get_current_seller)
 ):
     await image_service.delete_product_image(db, image_id, current_seller.id)
