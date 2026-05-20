@@ -214,7 +214,7 @@ async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
     if not product or product.seller_id != seller.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
 
-    if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
+    if product.status == ProductStatus.HARD_BLOCKED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Редактирование товара запрещено",
@@ -224,6 +224,40 @@ async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
             status_code=status.HTTP_409_CONFLICT,
             detail="Нельзя удалить SKU с резервом",
         )
+    remaining_result = await db.execute(
+        select(func.count(SKU.id)).where(
+            SKU.product_id == product.id,
+            SKU.id != sku.id,
+        )
+    )
+    remaining_count = remaining_result.scalar_one()
+
+    if product.status == ProductStatus.MODERATED and sku.active_quantity > 0:
+        await add_outbox_event(
+            db=db,
+            event_type="SKU_OUT_OF_STOCK",
+            target_url=settings.B2C_SERVICE_URL,
+            payload={
+                "event": "SKU_OUT_OF_STOCK",
+                "product_id": str(product.id),
+                "sku_ids": [str(sku.id)],
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     await db.delete(sku)
+
+    if product.status == ProductStatus.ON_MODERATION and remaining_count == 0:
+        product.status = ProductStatus.CREATED
+        await add_outbox_event(
+            db=db,
+            event_type="DELETED",
+            target_url=f"{settings.MODERATION_SERVICE_URL}/api/v1/events/product",
+            payload={
+                "product_id": str(product.id),
+                "seller_id": str(product.seller_id),
+                "event": "DELETED",
+                "date": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     await db.commit()
