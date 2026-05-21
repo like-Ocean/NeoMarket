@@ -25,6 +25,14 @@ async def get_categories(
 
 
 @category_router.get(
+    "/tree", response_model=list[CategoryTreeResponse],
+    summary="Полное дерево категорий"
+)
+async def get_categories_tree(db: AsyncSession = Depends(get_db)):
+    return await category_service.get_categories_tree(db)
+
+
+@category_router.get(
     "/{category_id}",
     response_model=CategoryWithChildrenResponse,
     summary="Категория с подкатегориями"
@@ -91,14 +99,6 @@ async def delete_category(
             detail="Категория не найдена",
         )
     await category_service.delete_category(db, category)
-
-
-@category_router.get(
-    "/tree", response_model=list[CategoryTreeResponse],
-    summary="Полное дерево категорий"
-)
-async def get_categories_tree(db: AsyncSession = Depends(get_db)):
-    return await category_service.get_categories_tree(db)
 
 
 @category_router.get(
