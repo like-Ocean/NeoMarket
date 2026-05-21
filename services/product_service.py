@@ -286,17 +286,55 @@ async def get_product_skus(db: AsyncSession, product_id: UUID, seller_id: UUID) 
     return result.scalars().all()
 
 
-async def get_similar_products(db: AsyncSession,  product_id: UUID, limit: int = 10) -> list[Product]:
+async def get_similar_products(db: AsyncSession, product_id: UUID, limit: int = 10):
     product = await get_product_by_id_public(db, product_id)
     if not product:
-        return []
-    
-    result = await db.execute(
-        select(Product)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Товар не найден"
+        )
+
+    min_price_subq = (
+        select(SKU.product_id, func.min(SKU.price).label("min_price"))
+        .group_by(SKU.product_id)
+        .subquery()
+    )
+    cover_image_subq = (
+        select(ProductImage.url)
+        .where(ProductImage.product_id == Product.id)
+        .order_by(ProductImage.ordering.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    query = (
+        select(
+            Product,
+            min_price_subq.c.min_price,
+            cover_image_subq.label("cover_image")
+        )
+        .outerjoin(min_price_subq, min_price_subq.c.product_id == Product.id)
         .where(Product.category_id == product.category_id)
         .where(Product.id != product_id)
         .where(Product.status == ProductStatus.MODERATED)
+        .where(Product.deleted == False)
         .order_by(Product.created_at.desc())
         .limit(limit)
     )
-    return result.scalars().all()
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    similar = []
+    for prod, min_price_val, cover_img in rows:
+        similar.append({
+            "id": prod.id,
+            "title": prod.title,
+            "slug": prod.slug,
+            "status": prod.status,
+            "category_id": prod.category_id,
+            "min_price": int(min_price_val) if min_price_val is not None else 0,
+            "cover_image": cover_img,
+            "created_at": prod.created_at,
+        })
+    return similar
