@@ -63,7 +63,7 @@ async def get_product(
     x_service_key: str | None = Header(default=None, alias="X-Service-Key")
 ):
     if x_service_key:
-        await require_b2c_key(x_service_key)
+        require_b2c_key(x_service_key)
         product = await public_service.get_product_by_id_public(db, product_id)
         if not product:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
