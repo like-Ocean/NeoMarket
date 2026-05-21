@@ -12,6 +12,7 @@ from models.outbox_event import OutboxEvent
 from models.product import Product, ProductStatus
 from models.processed_event import ProcessedEvent
 from models.seller import Seller
+from models.invoice_item import InvoiceItem 
 from models.sku import SKU
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -66,6 +67,7 @@ async def test_context(db_session):
     finally:
         await db_session.execute(delete(OutboxEvent))
         await db_session.execute(delete(ProcessedEvent))
+        await db_session.execute(delete(InvoiceItem))
         await db_session.execute(delete(SKU))
         await db_session.execute(delete(Product).where(Product.seller_id == seller.id))
         await db_session.execute(delete(Category).where(Category.id == category.id))
