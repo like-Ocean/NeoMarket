@@ -51,7 +51,6 @@ async def update_seller(db: AsyncSession, seller: Seller, data: SellerUpdate) ->
     return seller
 
 
-# TODO: сделать флаг is_deleted для того чтобы не удалять пользователей
 async def delete_seller(db: AsyncSession, seller: Seller) -> None:
     seller.is_deleted = True
     await db.commit()
