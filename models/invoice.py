@@ -1,7 +1,8 @@
+from datetime import datetime
 import uuid
 import enum
 from typing import TYPE_CHECKING
-from sqlalchemy import ForeignKey, Enum as SAEnum
+from sqlalchemy import DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.database import Base, TimestampMixin
@@ -13,7 +14,9 @@ if TYPE_CHECKING:
 
 class InvoiceStatus(str, enum.Enum):
     CREATED = "CREATED"
+    PARTIALLY_ACCEPTED = "PARTIALLY_ACCEPTED"
     ACCEPTED = "ACCEPTED"
+    CANCELLED = "CANCELLED"
 
 
 class Invoice(Base, TimestampMixin):
@@ -31,19 +34,11 @@ class Invoice(Base, TimestampMixin):
     status: Mapped[InvoiceStatus] = mapped_column(
         SAEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.CREATED
     )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
     seller: Mapped["Seller"] = relationship(back_populates="invoices")
     items: Mapped[list["InvoiceItem"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan"
     )
-
-    @property
-    def accepted_at(self):
-        return None
-
-    @property
-    def accepted_by(self):
-        return None
-
-

@@ -233,3 +233,95 @@ async def test_others_sku_returns_403(client, db_session, test_context):
     await db_session.execute(delete(Product).where(Product.id == product.id))
     await db_session.execute(delete(Seller).where(Seller.id == other_seller.id))
     await db_session.commit()
+
+
+async def test_accept_invoice_full(client, db_session, moderated_sku):
+    payload = {"items": [{"sku_id": str(moderated_sku.id), "quantity": 5}]}
+    resp = await client.post("/api/v1/invoices", json=payload)
+    assert resp.status_code == 201
+    invoice = resp.json()
+    
+    resp_accept = await client.post(f"/api/v1/invoices/{invoice['id']}/accept")
+    assert resp_accept.status_code == 200
+    data = resp_accept.json()
+    assert data["status"] == "ACCEPTED"
+    assert data["accepted_at"] is not None
+    assert data["accepted_by"] is not None
+    assert len(data["items"]) == 1
+    assert data["items"][0]["accepted_quantity"] == 5
+    await db_session.refresh(moderated_sku)
+    assert moderated_sku.active_quantity == 5
+
+
+async def test_accept_invoice_partial(client, db_session, test_context, moderated_product, moderated_sku):
+    sku2 = SKU(
+        id=uuid4(),
+        product_id=moderated_product.id,
+        name="SKU2",
+        price=100,
+        discount=0,
+        cost_price=50,
+        active_quantity=0,
+        reserved_quantity=0
+    )
+    db_session.add(sku2)
+    await db_session.commit()
+    
+    payload = {
+        "items": [
+            {"sku_id": str(moderated_sku.id), "quantity": 10},
+            {"sku_id": str(sku2.id), "quantity": 5}
+        ]
+    }
+    resp = await client.post("/api/v1/invoices", json=payload)
+    assert resp.status_code == 201
+    invoice = resp.json()
+    
+    accept_payload = {
+        "accepted_items": [
+            {"invoice_item_id": invoice["items"][0]["id"], "accepted_quantity": 10},
+            {"invoice_item_id": invoice["items"][1]["id"], "accepted_quantity": 2}
+        ]
+    }
+    resp_accept = await client.post(
+        f"/api/v1/invoices/{invoice['id']}/accept",
+        json=accept_payload
+    )
+    assert resp_accept.status_code == 200
+    data = resp_accept.json()
+    assert data["status"] == "PARTIALLY_ACCEPTED"
+    assert data["items"][0]["accepted_quantity"] == 10
+    assert data["items"][1]["accepted_quantity"] == 2
+    
+    await db_session.refresh(moderated_sku)
+    await db_session.refresh(sku2)
+    assert moderated_sku.active_quantity == 10
+    assert sku2.active_quantity == 2
+
+
+async def test_accept_already_accepted_fails(client, moderated_sku):
+    payload = {"items": [{"sku_id": str(moderated_sku.id), "quantity": 1}]}
+    resp = await client.post("/api/v1/invoices", json=payload)
+    assert resp.status_code == 201
+    invoice = resp.json()
+    
+    await client.post(f"/api/v1/invoices/{invoice['id']}/accept")
+    resp2 = await client.post(f"/api/v1/invoices/{invoice['id']}/accept")
+    assert resp2.status_code == 400
+
+
+async def test_accept_exceeding_quantity_fails(client, moderated_sku):
+    payload = {"items": [{"sku_id": str(moderated_sku.id), "quantity": 5}]}
+    resp = await client.post("/api/v1/invoices", json=payload)
+    assert resp.status_code == 201
+    invoice = resp.json()
+    
+    resp_accept = await client.post(
+        f"/api/v1/invoices/{invoice['id']}/accept",
+        json={
+            "accepted_items": [
+                {"invoice_item_id": invoice["items"][0]["id"], "accepted_quantity": 10}
+            ]
+        }
+    )
+    assert resp_accept.status_code == 400
