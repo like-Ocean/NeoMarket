@@ -14,7 +14,7 @@ def _extract_bearer_token(credentials: HTTPAuthorizationCredentials | None) -> s
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Не передан Authorization",
+            detail={"code": "UNAUTHORIZED", "message": "Не передан Authorization"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     return credentials.credentials
@@ -30,7 +30,7 @@ async def get_current_seller(
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Невалидный токен",
+            detail={"code": "INVALID_TOKEN", "message": "Невалидный токен"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -38,7 +38,7 @@ async def get_current_seller(
     if not seller:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Продавец не найден",
+            detail={"code": "SELLER_NOT_FOUND", "message": "Продавец не найден"}
         )
 
     return seller
@@ -56,35 +56,47 @@ async def get_current_seller_optional(
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Невалидный токен",
+             detail={"code": "INVALID_TOKEN", "message": "Невалидный токен"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     seller = await get_seller_by_id(db, seller_id)
     if not seller:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Продавец не найден")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "SELLER_NOT_FOUND", "message": "Продавец не найден"},
+        )
     return seller
 
 
 def require_service_key(x_service_key: str | None = Header(default=None, alias="X-Service-Key")) -> str:
     if not x_service_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-Service-Key обязателен")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHORIZED", "message": "X-Service-Key обязателен"}
+        )
     return x_service_key
 
 
 def require_moderation_key(x_service_key: str = Depends(require_service_key)) -> None:
     if x_service_key != settings.MOD_SERVICE_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail={"code": "INVALID_SERVICE_KEY", "message": "Неверный Service Key"}
+        )
 
 
 def require_b2c_key(x_service_key: str = Depends(require_service_key)) -> None:
     if x_service_key != settings.B2C_SERVICE_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Неверный Service Key")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail={"code": "INVALID_SERVICE_KEY", "message": "Неверный Service Key"},
+        )
 
 
 def require_internal_token(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> None:
     if not x_internal_token or x_internal_token != settings.INTERNAL_API_TOKEN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Неверный внутренний токен",
+           detail={"code": "INVALID_INTERNAL_TOKEN", "message": "Неверный внутренний токен"},
         )

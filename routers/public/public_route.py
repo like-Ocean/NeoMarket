@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.dependencies import require_b2c_key
@@ -11,14 +11,27 @@ from schemas.sku import SKUPublicResponse
 from services import public_service, product_service
 
 public_router = APIRouter(
-    prefix="/public",
-    tags=["Public Catalog"],
-    dependencies=[Depends(require_b2c_key)],
+    prefix="/public", tags=["Public Catalog"],
+    dependencies=[Depends(require_b2c_key)]
 )
+
+
+def _parse_filters(request: Request) -> dict[str, list[str]] | None:
+    """
+    Парсит filters[brand]=apple&filters[memory]=256 из query string.
+    """
+    result: dict[str, list[str]] = {}
+    for key, value in request.query_params.multi_items():
+        if key.startswith("filters[") and key.endswith("]"):
+            attr = key[8:-1]
+            if attr:
+                result.setdefault(attr, []).append(value)
+    return result if result else None
 
 
 @public_router.get("/products", response_model=ProductPublicPaginatedResponse)
 async def get_products_public(
+    request: Request,
     category_id: UUID | None = None,
     search: str | None = None,
     min_price: int | None = Query(None, ge=0, description="Минимальная цена"),
@@ -29,9 +42,10 @@ async def get_products_public(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
+    filters = _parse_filters(request)
     return await public_service.get_products_public(
-        db=db, limit=limit, offset=offset,
-        category_id=category_id,
+        db=db, filters=filters, limit=limit,
+        offset=offset, category_id=category_id,
         search=search, min_price=min_price,
         max_price=max_price,
         seller_id=seller_id,

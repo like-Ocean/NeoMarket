@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import UUID, select, func, or_
+from sqlalchemy import UUID, select, func, or_, exists
+from models.product_characteristic import ProductCharacteristic
 from sqlalchemy.orm import selectinload
 from models import Product, SKU, ProductImage
 from models.product import ProductStatus
@@ -8,6 +9,7 @@ from models.product import ProductStatus
 async def get_products_public(
     db: AsyncSession, limit: int = 20,
     offset: int = 0, category_id: UUID | None = None,
+    filters: dict | None = None,
     search: str | None = None,
     min_price: int | None = None,
     max_price: int | None = None,
@@ -51,17 +53,24 @@ async def get_products_public(
             )
         )
     
-    if min_price is not None or max_price is not None:
-        min_price_subq = (
-            select(SKU.product_id, func.min(SKU.price).label("min_price"))
-            .group_by(SKU.product_id)
-            .subquery()
-        )
-        
-        if min_price is not None:
-            query = query.where(min_price_subq.c.min_price >= min_price)
-        if max_price is not None:
-            query = query.where(min_price_subq.c.min_price <= max_price)
+    if min_price is not None:
+        query = query.where(min_price_subq.c.min_price >= min_price)
+    if max_price is not None:
+        query = query.where(min_price_subq.c.min_price <= max_price)
+
+    if filters:
+        for attr_name, values in filters.items():
+            if not isinstance(values, list):
+                values = [values]
+            values = [v for v in values if v]
+            if not values:
+                continue
+            subq = select(ProductCharacteristic).where(
+                ProductCharacteristic.product_id == Product.id,
+                ProductCharacteristic.name == attr_name,
+                ProductCharacteristic.value.in_(values)
+            )
+            query = query.where(exists(subq))
 
     if sort == "price_asc":
         query = query.order_by(min_price_subq.c.min_price.asc())
