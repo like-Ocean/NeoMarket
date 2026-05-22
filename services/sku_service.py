@@ -164,7 +164,9 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
         )
     
     if data.article:
-        existing = await db.execute(select(SKU).where(SKU.article == data.article))
+        existing = await db.execute(
+            select(SKU).where(SKU.article == data.article, SKU.id != sku_id)
+        )
         if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

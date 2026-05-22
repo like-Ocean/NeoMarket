@@ -456,3 +456,45 @@ async def test_edit_others_product_returns_403(client, db_session, test_context)
     await db_session.execute(delete(Product).where(Product.id == product.id))
     await db_session.execute(delete(Seller).where(Seller.id == other_seller.id))
     await db_session.commit()
+
+async def test_edit_sku_returns_product_to_moderation(client, product_factory, db_session, monkeypatch):
+    """При редактировании SKU родительский товар переходит в ON_MODERATION и отправляется событие EDITED."""
+    monkeypatch.setattr(settings, "MODERATION_SERVICE_URL", "http://moderation")
+    await db_session.execute(delete(OutboxEvent))
+    await db_session.commit()
+
+    product = await product_factory(status=ProductStatus.MODERATED)
+    sku = SKU(
+        id=uuid4(),
+        product_id=product.id,
+        name="Test SKU",
+        price=500,
+        discount=0,
+        cost_price=None,
+        active_quantity=0,
+        reserved_quantity=0,
+        article=None,
+    )
+    db_session.add(sku)
+    await db_session.commit()
+
+    response = await client.patch(
+        f"/api/v1/skus/{sku.id}",
+        json={"price": 600},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(product)
+    assert product.status == ProductStatus.ON_MODERATION
+
+    result = await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "EDITED")
+    )
+    events = result.scalars().all()
+    assert len(events) == 1
+
+    payload = json.loads(events[0].payload)
+    assert payload["product_id"] == str(product.id)
+    assert payload["seller_id"] == str(product.seller_id)
+    assert payload["event"] == "EDITED"
+    assert "date" in payload

@@ -203,8 +203,14 @@ async def test_missing_category_id_returns_422(client, valid_product_payload):
     response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert any(item["loc"][-1] == "category_id" for item in detail)
+    data = response.json()
+    assert data["code"] == "VALIDATION_ERROR"
+    assert "message" in data
+    assert "details" in data
+    assert any(
+        error["loc"][-1] == "category_id"
+        for error in data["details"]
+    )
 
 
 async def test_empty_title_returns_400(client, valid_product_payload):
@@ -236,8 +242,14 @@ async def test_invalid_category_uuid_returns_422(client, valid_product_payload):
     response = await client.post("/api/v1/products", json=payload)
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert any(item["loc"][-1] == "category_id" for item in detail)
+    data = response.json()
+    assert data["code"] == "VALIDATION_ERROR"
+    assert "message" in data
+    assert "details" in data
+    assert any(
+        error["loc"][-1] == "category_id"
+        for error in data["details"]
+    )
 
 
 async def test_delete_sets_deleted_true(client, product, db_session):
