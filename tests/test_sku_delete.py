@@ -207,3 +207,16 @@ async def test_sku_out_of_stock_event_on_moderated_product(
     assert payload["event"] == "SKU_OUT_OF_STOCK"
     assert payload["product_id"] == str(product.id)
     assert payload["sku_ids"] == [str(sku.id)]
+
+
+async def test_delete_already_deleted_sku_returns_404(client, db_session, test_context):
+    product = await _create_product(db_session, test_context, ProductStatus.CREATED)
+    sku = await _create_sku(db_session, product.id)
+
+    response = await client.delete(f"/api/v1/skus/{sku.id}")
+    assert response.status_code == 204
+
+    response = await client.delete(f"/api/v1/skus/{sku.id}")
+    assert response.status_code == 404
+    data = response.json()
+    assert data["code"] == "SKU_NOT_FOUND"

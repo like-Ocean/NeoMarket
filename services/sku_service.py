@@ -26,7 +26,7 @@ async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
     if not sku:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="SKU не найден",
+            detail={"code": "SKU_NOT_FOUND", "message": "SKU не найден"},
         )
 
     if seller_id is not None:
@@ -37,7 +37,7 @@ async def get_sku_by_id(db: AsyncSession, sku_id, seller_id=None) -> SKU:
         if not product or product.seller_id != seller_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="SKU не найден",
+                detail={"code": "SKU_NOT_FOUND", "message": "SKU не найден"},
             )
 
     return sku
@@ -52,12 +52,12 @@ async def get_skus_by_product(db: AsyncSession, product_id, seller_id) -> list[S
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
     if product.seller_id != seller_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
 
     result = await db.execute(
@@ -80,12 +80,12 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
     if not product or product.seller_id != seller.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
 
     if data.article:
@@ -93,8 +93,8 @@ async def create_sku(db: AsyncSession, seller: Seller, data: SKUCreate) -> SKU:
         if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"SKU с артикулом '{data.article}' уже существует",
-        )
+                detail={"code": "ARTICLE_CONFLICT", "message": f"SKU с артикулом '{data.article}' уже существует"},
+            )
 
     count_result = await db.execute(
         select(func.count(SKU.id)).where(SKU.product_id == product.id)
@@ -155,12 +155,15 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
     )
     product = product_result.scalar_one_or_none()
     if not product or product.seller_id != seller.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "SKU_NOT_FOUND", "message": "SKU не найден"},
+        )
 
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
     
     if data.article:
@@ -170,7 +173,7 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
         if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"SKU с артикулом '{data.article}' уже существует",
+                detail={"code": "ARTICLE_CONFLICT", "message": f"SKU с артикулом '{data.article}' уже существует"},
             )
 
     old_status = product.status
@@ -214,17 +217,20 @@ async def delete_sku(db: AsyncSession, sku_id, seller: Seller):
     )
     product = product_result.scalar_one_or_none()
     if not product or product.seller_id != seller.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU не найден")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "SKU_NOT_FOUND", "message": "SKU не найден"},
+        )
 
     if product.status == ProductStatus.HARD_BLOCKED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
     if sku.reserved_quantity > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Нельзя удалить SKU с резервом",
+            detail={"code": "RESERVED_SKU", "message": "Нельзя удалить SKU с резервом"},
         )
     remaining_result = await db.execute(
         select(func.count(SKU.id)).where(
