@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.dependencies import require_b2c_key
@@ -27,9 +26,6 @@ async def reserve_inventory(
         order_id=data.order_id,
         items=[(i.sku_id, i.quantity) for i in data.items],
     )
-    if result.get("error"):
-        return JSONResponse(status_code=409, content=result["error"])
-
     return result["response"]
 
 

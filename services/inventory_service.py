@@ -49,7 +49,7 @@ async def reserve(
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.active_quantity < qty:
             failed_items.append({
@@ -62,13 +62,14 @@ async def reserve(
 
     if failed_items:
         await db.rollback()
-        return {
-            "error": {
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
                 "code": "CONFLICT",
                 "message": "Не удалось зарезервировать",
                 "details": {"failed_items": failed_items},
-            }
-        }
+            },
+        )
 
     for sku_id, qty in items:
         sku = sku_by_id[sku_id]
@@ -140,12 +141,15 @@ async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dic
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.reserved_quantity < qty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                detail={
+                    "code": "INSUFFICIENT_STOCK",
+                    "message": f"Недостаточно зарезервированного остатка для SKU {sku_id}"
+                },
             )
         sku.reserved_quantity -= qty
         sku.active_quantity += qty
@@ -189,12 +193,15 @@ async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dict:
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.reserved_quantity < qty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                detail={
+                    "code": "INSUFFICIENT_RESERVED",
+                    "message": f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                }
             )
         sku.reserved_quantity -= qty
 

@@ -47,8 +47,8 @@ async def get_product_public(
     if not product:
         from fastapi import HTTPException, status
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден"
+            status_code=404,
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"}
         )
     return product
 
@@ -79,7 +79,7 @@ async def get_sku_public(
     if not sku:
         from fastapi import HTTPException, status
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="SKU не найден"
+            status_code=404,
+            detail={"code": "SKU_NOT_FOUND", "message": "SKU не найден"}
         )
     return sku

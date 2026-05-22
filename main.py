@@ -59,11 +59,19 @@ app.add_middleware(
 
 @app.exception_handler(StarletteHTTPException)
 async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
-    if isinstance(exc.detail, dict) and "code" in exc.detail and "message" in exc.detail:
-        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    if isinstance(exc.detail, dict):
+        payload = {
+            "code": exc.detail.get("code", "HTTP_ERROR"),
+            "message": exc.detail.get("message", str(exc.detail)),
+        }
+        details = exc.detail.get("details")
+        if details is not None:
+            payload["details"] = details
+        return JSONResponse(status_code=exc.status_code, content=payload)
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={"code": "HTTP_ERROR", "message": str(exc.detail)}
+        content={"code": "HTTP_ERROR", "message": str(exc.detail), "details": None},
     )
 
 @app.exception_handler(RequestValidationError)
@@ -77,7 +85,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         message = f"Поле '{'.'.join(map(str, field))}' {msg}" if field else msg
     return JSONResponse(
         status_code=422,
-        content={"code": "VALIDATION_ERROR", "message": message, "details": errors}
+        content={"code": "VALIDATION_ERROR", "message": message, "details": errors},
     )
 
 

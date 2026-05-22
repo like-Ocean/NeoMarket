@@ -66,11 +66,15 @@ async def get_product(
         require_b2c_key(x_service_key)
         product = await public_service.get_product_by_id_public(db, product_id)
         if not product:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
+            raise HTTPException(
+                status_code=404, detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"}
+            )
         return product
 
     if not current_seller:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован")
+        raise HTTPException(
+            status_code=401, detail={"code": "UNAUTHORIZED", "message": "Не авторизован"}
+        )
 
     return await product_service.get_product_by_id(
         db, product_id, seller_id=current_seller.id

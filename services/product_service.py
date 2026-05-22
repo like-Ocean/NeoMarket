@@ -30,13 +30,13 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
 
     if seller_id is not None and product.seller_id != seller_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
 
     return product
@@ -173,12 +173,12 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
     if product.seller_id != seller.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа",
+            detail={"code": "FORBIDDEN", "message": "Нет доступа"},
         )
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
     if data.category_id is not None:
         category_result = await db.execute(
@@ -188,7 +188,7 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Категория не найдена",
+                detail={"code": "CATEGORY_NOT_FOUND", "message": "Категория не найдена"},
             )
 
     old_status = product.status
@@ -231,13 +231,13 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     if product.deleted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Товар уже удален",
+            detail={"code": "PRODUCT_ALREADY_DELETED", "message": "Товар уже удален"},
         )
 
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
 
     skus_result = await db.execute(
@@ -291,7 +291,7 @@ async def get_similar_products(db: AsyncSession, product_id: UUID, limit: int = 
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден"
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
         )
 
     min_price_subq = (
