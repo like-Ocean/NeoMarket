@@ -59,7 +59,7 @@ async def create_category(db: AsyncSession, data: CategoryCreate) -> Category:
         if not parent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Родительская категория не найдена",
+                detail={"code": "PARENT_CATEGORY_NOT_FOUND", "message": "Родительская категория не найдена"},
             )
 
     category = Category(
@@ -76,15 +76,15 @@ async def create_category(db: AsyncSession, data: CategoryCreate) -> Category:
 async def update_category(db: AsyncSession, category: Category, data: CategoryUpdate) -> Category:
     if data.parent_id:
         if data.parent_id == category.id:
-            raise HTTPException(
+           raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Категория не может быть родителем самой себя",
+                detail={"code": "SELF_PARENT_CATEGORY", "message": "Категория не может быть родителем самой себя"},
             )
         parent = await get_category_by_id(db, data.parent_id)
         if not parent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Родительская категория не найдена",
+                detail={"code": "PARENT_CATEGORY_NOT_FOUND", "message": "Родительская категория не найдена"},
             )
 
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -106,7 +106,10 @@ async def delete_category(db: AsyncSession, category: Category):
     if has_products:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Категория содержит товары и не может быть удалена",
+            detail={
+                "code": "CATEGORY_HAS_PRODUCTS",
+                "message": "Категория содержит товары и не может быть удалена"
+            },
         )
 
     await db.delete(category)

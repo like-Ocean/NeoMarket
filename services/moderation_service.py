@@ -27,7 +27,10 @@ async def handle_moderation_event(db: AsyncSession, data: ModerationEventRequest
     )
     product = product_result.scalar_one_or_none()
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Товар не найден"},
+        )
 
     if data.event_type == "MODERATED":
         product.status = ProductStatus.MODERATED
