@@ -11,8 +11,7 @@ from core.config import settings
 
 
 async def reserve(
-    db: AsyncSession, idempotency_key: UUID,
-    order_id: UUID, items: list[tuple]
+    db: AsyncSession, idempotency_key: UUID, order_id: UUID, items: list[tuple]
 ) -> dict:
     existing_result = await db.execute(
         select(ProcessedEvent).where(
@@ -41,34 +40,35 @@ async def reserve(
     sku_by_id: dict[UUID, SKU] = {}
 
     for sku_id, qty in items:
-        result = await db.execute(
-            select(SKU).where(SKU.id == sku_id).with_for_update()
-        )
+        result = await db.execute(select(SKU).where(SKU.id == sku_id).with_for_update())
         sku = result.scalar_one_or_none()
         if not sku:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.active_quantity < qty:
-            failed_items.append({
-                "sku_id": str(sku_id),
-                "requested": qty,
-                "available": sku.active_quantity,
-                "reason": "INSUFFICIENT_STOCK",
-            })
+            failed_items.append(
+                {
+                    "sku_id": str(sku_id),
+                    "requested": qty,
+                    "available": sku.active_quantity,
+                    "reason": "INSUFFICIENT_STOCK",
+                }
+            )
         sku_by_id[sku_id] = sku
 
     if failed_items:
         await db.rollback()
-        return {
-            "error": {
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
                 "code": "CONFLICT",
                 "message": "Не удалось зарезервировать",
                 "details": {"failed_items": failed_items},
-            }
-        }
+            },
+        )
 
     for sku_id, qty in items:
         sku = sku_by_id[sku_id]
@@ -93,24 +93,26 @@ async def reserve(
         "status": "RESERVED",
         "reserved_at": datetime.now(timezone.utc).isoformat(),
     }
-    db.add(ProcessedEvent(
-        sender_service="inventory",
-        idempotency_key=idempotency_key,
-        response_cached=json.dumps(
-            {
-                "request": {
-                    "idempotency_key": str(idempotency_key),
-                    "order_id": str(order_id),
-                    "items": [
-                        {"sku_id": str(sku_id), "quantity": qty}
-                        for sku_id, qty in items
-                    ],
+    db.add(
+        ProcessedEvent(
+            sender_service="inventory",
+            idempotency_key=idempotency_key,
+            response_cached=json.dumps(
+                {
+                    "request": {
+                        "idempotency_key": str(idempotency_key),
+                        "order_id": str(order_id),
+                        "items": [
+                            {"sku_id": str(sku_id), "quantity": qty}
+                            for sku_id, qty in items
+                        ],
+                    },
+                    "response": response_payload,
                 },
-                "response": response_payload,
-            },
-            ensure_ascii=False,
-        ),
-    ))
+                ensure_ascii=False,
+            ),
+        )
+    )
 
     await db.commit()
     return {"response": response_payload}
@@ -133,19 +135,20 @@ async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dic
         }
 
     for sku_id, qty in items:
-        result = await db.execute(
-            select(SKU).where(SKU.id == sku_id).with_for_update()
-        )
+        result = await db.execute(select(SKU).where(SKU.id == sku_id).with_for_update())
         sku = result.scalar_one_or_none()
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.reserved_quantity < qty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                detail={
+                    "code": "BAD_REQUEST",
+                    "message": f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                },
             )
         sku.reserved_quantity -= qty
         sku.active_quantity += qty
@@ -155,11 +158,13 @@ async def unreserve(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dic
         "status": "UNRESERVED",
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
-    db.add(ProcessedEvent(
-        sender_service="inventory_unreserve",
-        idempotency_key=order_id,
-        response_cached=json.dumps(response_payload, ensure_ascii=False),
-    ))
+    db.add(
+        ProcessedEvent(
+            sender_service="inventory_unreserve",
+            idempotency_key=order_id,
+            response_cached=json.dumps(response_payload, ensure_ascii=False),
+        )
+    )
 
     await db.commit()
     return response_payload
@@ -182,19 +187,20 @@ async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dict:
         }
 
     for sku_id, qty in items:
-        result = await db.execute(
-            select(SKU).where(SKU.id == sku_id).with_for_update()
-        )
+        result = await db.execute(select(SKU).where(SKU.id == sku_id).with_for_update())
         sku = result.scalar_one_or_none()
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {sku_id} не найден"},
             )
         if sku.reserved_quantity < qty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                detail={
+                    "code": "BAD_REQUEST",
+                    "message": f"Недостаточно зарезервированного остатка для SKU {sku_id}",
+                },
             )
         sku.reserved_quantity -= qty
 
@@ -203,11 +209,13 @@ async def fulfill(db: AsyncSession, order_id: UUID, items: list[tuple]) -> dict:
         "status": "FULFILLED",
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
-    db.add(ProcessedEvent(
-        sender_service="inventory_fulfill",
-        idempotency_key=order_id,
-        response_cached=json.dumps(response_payload, ensure_ascii=False),
-    ))
+    db.add(
+        ProcessedEvent(
+            sender_service="inventory_fulfill",
+            idempotency_key=order_id,
+            response_cached=json.dumps(response_payload, ensure_ascii=False),
+        )
+    )
 
     await db.commit()
     return response_payload

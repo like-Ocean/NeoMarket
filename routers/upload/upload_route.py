@@ -19,7 +19,10 @@ async def _validate_image_upload(file: UploadFile) -> None:
     if file.content_type not in ALLOWED_IMAGE_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="UNSUPPORTED_MEDIA_TYPE",
+            detail={
+                "code": "UNSUPPORTED_MEDIA_TYPE",
+                "message": "Неподдерживаемый формат файла",
+            },
         )
 
     size = 0
@@ -30,7 +33,10 @@ async def _validate_image_upload(file: UploadFile) -> None:
             await file.seek(0)
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="FILE_TOO_LARGE",
+                detail={
+                    "code": "REQUEST_ENTITY_TOO_LARGE",
+                    "message": "Файл слишком большой",
+                },
             )
     await file.seek(0)
 
@@ -53,7 +59,10 @@ async def upload_image_endpoint(
     if normalized_type not in {"PRODUCT", "SKU"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="entity_type должен быть product или sku",
+            detail={
+                "code": "BAD_REQUEST",
+                "message": "entity_type должен быть product или sku",
+            },
         )
 
     if entity_id is not None:

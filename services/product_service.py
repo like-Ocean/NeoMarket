@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from fastapi import HTTPException, status
-from fastapi.responses import JSONResponse
 from models import Category, Product, ProductCharacteristic, ProductImage, Seller
 from models.product import ProductStatus
 from schemas.product import ProductCreate, ProductUpdate
@@ -15,7 +14,9 @@ from helpers.product_and_sku import _generate_unique_slug
 from core.config import settings
 
 
-async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Product | None:
+async def get_product_by_id(
+    db: AsyncSession, product_id, seller_id=None
+) -> Product | None:
     result = await db.execute(
         select(Product)
         .options(
@@ -30,24 +31,26 @@ async def get_product_by_id(db: AsyncSession, product_id, seller_id=None) -> Pro
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "NOT_FOUND", "message": "Товар не найден"},
         )
 
     if seller_id is not None and product.seller_id != seller_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден",
+            detail={"code": "NOT_FOUND", "message": "Товар не найден"},
         )
 
     return product
 
 
 async def get_products_by_seller(
-    db: AsyncSession, seller_id: UUID, 
-    limit: int = 20, offset: int = 0,
+    db: AsyncSession,
+    seller_id: UUID,
+    limit: int = 20,
+    offset: int = 0,
     status: str | None = None,
     search: str | None = None,
-    include_deleted: bool = False
+    include_deleted: bool = False,
 ) -> dict:
     min_price_subq = (
         select(SKU.product_id, func.min(SKU.price).label("min_price"))
@@ -63,7 +66,9 @@ async def get_products_by_seller(
     )
 
     query = (
-        select(Product, min_price_subq.c.min_price, cover_image_subq.label("cover_image"))
+        select(
+            Product, min_price_subq.c.min_price, cover_image_subq.label("cover_image")
+        )
         .outerjoin(min_price_subq, min_price_subq.c.product_id == Product.id)
         .where(Product.seller_id == seller_id)
         .order_by(Product.created_at.desc())
@@ -82,17 +87,21 @@ async def get_products_by_seller(
     result = await db.execute(query.limit(limit).offset(offset))
     items = []
     for product, min_price_value, cover_image in result.all():
-        items.append({
-            "id": product.id,
-            "title": product.title,
-            "slug": product.slug,
-            "status": product.status,
-            "category_id": product.category_id,
-            "deleted": product.deleted,
-            "created_at": product.created_at,
-            "min_price": int(min_price_value) if min_price_value is not None else None,
-            "cover_image": cover_image,
-        })
+        items.append(
+            {
+                "id": product.id,
+                "title": product.title,
+                "slug": product.slug,
+                "status": product.status,
+                "category_id": product.category_id,
+                "deleted": product.deleted,
+                "created_at": product.created_at,
+                "min_price": (
+                    int(min_price_value) if min_price_value is not None else None
+                ),
+                "cover_image": cover_image,
+            }
+        )
 
     return {
         "items": items,
@@ -102,30 +111,41 @@ async def get_products_by_seller(
     }
 
 
-async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) -> Product:
+async def create_product(
+    db: AsyncSession, seller: Seller, data: ProductCreate
+) -> Product:
     if data.title is None or (isinstance(data.title, str) and data.title.strip() == ""):
-        return JSONResponse(
-            status_code=400, 
-            content={"code": "INVALID_REQUEST", "message": "title is required"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_REQUEST", "message": "title is required"},
         )
     if not isinstance(data.title, str) or len(data.title) < 1 or len(data.title) > 255:
-        return JSONResponse(
-            status_code=400, 
-            content={"code": "INVALID_REQUEST", "message": "title must be 1-255 characters"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_REQUEST",
+                "message": "title must be 1-255 characters",
+            },
         )
-    
+
     if not data.images:
-        return JSONResponse(
-            status_code=400,
-            content={"code": "INVALID_REQUEST", "message": "At least one image is required"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_REQUEST",
+                "message": "At least one image is required",
+            },
         )
 
     try:
         _ = UUID(str(data.category_id))
     except Exception:
-        return JSONResponse(
-            status_code=400, 
-            content={"code": "INVALID_REQUEST", "message": "category_id must be a valid UUID"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_REQUEST",
+                "message": "category_id must be a valid UUID",
+            },
         )
 
     category_result = await db.execute(
@@ -133,9 +153,9 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
     )
     category = category_result.scalar_one_or_none()
     if not category:
-        return JSONResponse(
-            status_code=400, 
-            content={"code": "INVALID_REQUEST", "message": "Category not found"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_REQUEST", "message": "Category not found"},
         )
 
     slug = data.slug or await _generate_unique_slug(db, data.title)
@@ -151,34 +171,40 @@ async def create_product(db: AsyncSession, seller: Seller, data: ProductCreate) 
     await db.flush()
 
     for image in data.images:
-        db.add(ProductImage(
-            product_id=product.id,
-            url=image.url,
-            ordering=image.ordering,
-        ))
+        db.add(
+            ProductImage(
+                product_id=product.id,
+                url=image.url,
+                ordering=image.ordering,
+            )
+        )
 
     for characteristic in data.characteristics:
-        db.add(ProductCharacteristic(
-            product_id=product.id,
-            name=characteristic.name,
-            value=characteristic.value,
-        ))
+        db.add(
+            ProductCharacteristic(
+                product_id=product.id,
+                name=characteristic.name,
+                value=characteristic.value,
+            )
+        )
 
     await db.commit()
     return await get_product_by_id(db, product.id)
 
 
-async def update_product(db: AsyncSession, product_id, seller: Seller, data: ProductUpdate) -> Product:
+async def update_product(
+    db: AsyncSession, product_id, seller: Seller, data: ProductUpdate
+) -> Product:
     product = await get_product_by_id(db, product_id)
     if product.seller_id != seller.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа",
+            detail={"code": "FORBIDDEN", "message": "Нет доступа"},
         )
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
     if data.category_id is not None:
         category_result = await db.execute(
@@ -188,7 +214,7 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Категория не найдена",
+                detail={"code": "NOT_FOUND", "message": "Категория не найдена"},
             )
 
     old_status = product.status
@@ -201,11 +227,13 @@ async def update_product(db: AsyncSession, product_id, seller: Seller, data: Pro
     if characteristics is not None:
         product.characteristics.clear()
         for characteristic in characteristics:
-            db.add(ProductCharacteristic(
-                product_id=product.id,
-                name=characteristic.name,
-                value=characteristic.value,
-            ))
+            db.add(
+                ProductCharacteristic(
+                    product_id=product.id,
+                    name=characteristic.name,
+                    value=characteristic.value,
+                )
+            )
 
     if old_status in {ProductStatus.MODERATED, ProductStatus.BLOCKED}:
         product.status = ProductStatus.ON_MODERATION
@@ -231,18 +259,16 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     if product.deleted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Товар уже удален",
+            detail={"code": "CONFLICT", "message": "Товар уже удален"},
         )
 
     if product.status in {ProductStatus.HARD_BLOCKED, ProductStatus.ON_MODERATION}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактирование товара запрещено",
+            detail={"code": "FORBIDDEN", "message": "Редактирование товара запрещено"},
         )
 
-    skus_result = await db.execute(
-        select(SKU.id).where(SKU.product_id == product.id)
-    )
+    skus_result = await db.execute(select(SKU.id).where(SKU.product_id == product.id))
     sku_ids = [str(sid) for sid in skus_result.scalars().all()]
 
     product.deleted = True
@@ -273,7 +299,9 @@ async def delete_product(db: AsyncSession, product_id, seller: Seller):
     await db.commit()
 
 
-async def get_product_skus(db: AsyncSession, product_id: UUID, seller_id: UUID) -> list[SKU]:
+async def get_product_skus(
+    db: AsyncSession, product_id: UUID, seller_id: UUID
+) -> list[SKU]:
     product = await get_product_by_id(db, product_id, seller_id=seller_id)
     result = await db.execute(
         select(SKU)
@@ -291,7 +319,7 @@ async def get_similar_products(db: AsyncSession, product_id: UUID, limit: int = 
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден"
+            detail={"code": "NOT_FOUND", "message": "Товар не найден"},
         )
 
     min_price_subq = (
@@ -309,9 +337,7 @@ async def get_similar_products(db: AsyncSession, product_id: UUID, limit: int = 
 
     query = (
         select(
-            Product,
-            min_price_subq.c.min_price,
-            cover_image_subq.label("cover_image")
+            Product, min_price_subq.c.min_price, cover_image_subq.label("cover_image")
         )
         .outerjoin(min_price_subq, min_price_subq.c.product_id == Product.id)
         .where(Product.category_id == product.category_id)
@@ -327,14 +353,16 @@ async def get_similar_products(db: AsyncSession, product_id: UUID, limit: int = 
 
     similar = []
     for prod, min_price_val, cover_img in rows:
-        similar.append({
-            "id": prod.id,
-            "title": prod.title,
-            "slug": prod.slug,
-            "status": prod.status,
-            "category_id": prod.category_id,
-            "min_price": int(min_price_val) if min_price_val is not None else 0,
-            "cover_image": cover_img,
-            "created_at": prod.created_at,
-        })
+        similar.append(
+            {
+                "id": prod.id,
+                "title": prod.title,
+                "slug": prod.slug,
+                "status": prod.status,
+                "category_id": prod.category_id,
+                "min_price": int(min_price_val) if min_price_val is not None else 0,
+                "cover_image": cover_img,
+                "created_at": prod.created_at,
+            }
+        )
     return similar

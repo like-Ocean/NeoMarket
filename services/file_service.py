@@ -23,12 +23,18 @@ async def _validate(file: UploadFile) -> None:
     if ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Недопустимое расширение. Разрешены: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+            detail={
+                "code": "BAD_REQUEST",
+                "message": f"Недопустимое расширение. Разрешены: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+            },
         )
     if file.content_type not in ALLOWED_IMAGE_MIME_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимый MIME-тип. Разрешены только изображения",
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={
+                "code": "UNSUPPORTED_MEDIA_TYPE",
+                "message": "Неподдерживаемый формат файла",
+            },
         )
 
     size = 0
@@ -39,7 +45,10 @@ async def _validate(file: UploadFile) -> None:
             await file.seek(0)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Файл превышает {settings.MAX_FILE_SIZE // (1024 * 1024)} МБ",
+                detail={
+                    "code": "BAD_REQUEST",
+                    "message": f"Файл превышает {settings.MAX_FILE_SIZE // (1024 * 1024)} МБ",
+                },
             )
     await file.seek(0)
 

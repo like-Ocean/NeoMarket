@@ -65,7 +65,7 @@ async def test_context(db_session):
 
     async def _override():
         return seller
-    
+
     app.dependency_overrides[get_current_seller] = _override
     app.dependency_overrides[get_current_seller_optional] = _override
 
@@ -76,9 +76,13 @@ async def test_context(db_session):
         app.dependency_overrides.pop(get_current_seller_optional, None)
         await db_session.execute(delete(OutboxEvent))
         await db_session.execute(delete(InvoiceItem))
-        await db_session.execute(delete(SKU).where(
-            SKU.product_id.in_(select(Product.id).where(Product.seller_id == seller.id))
-        ))
+        await db_session.execute(
+            delete(SKU).where(
+                SKU.product_id.in_(
+                    select(Product.id).where(Product.seller_id == seller.id)
+                )
+            )
+        )
         await db_session.execute(delete(Product).where(Product.seller_id == seller.id))
         await db_session.execute(delete(Category).where(Category.id == category.id))
         await db_session.execute(delete(Seller).where(Seller.id == seller.id))
@@ -115,7 +119,7 @@ async def product_factory(db_session, test_context):
     async def _factory(
         status: ProductStatus = ProductStatus.CREATED,
         blocking_reason_id=None,
-        moderator_comment=None
+        moderator_comment=None,
     ) -> Product:
         product = Product(
             id=uuid4(),
@@ -182,6 +186,7 @@ async def test_missing_images_returns_400(client, valid_product_payload):
 
     assert response.status_code == 400
     data = response.json()
+    print(data)
     assert data["message"] == "At least one image is required"
 
 
@@ -248,7 +253,9 @@ async def test_delete_sets_deleted_true(client, product, db_session):
     assert product.deleted is True
 
 
-async def test_delete_emits_event_to_moderation(client, product, db_session, monkeypatch):
+async def test_delete_emits_event_to_moderation(
+    client, product, db_session, monkeypatch
+):
     monkeypatch.setattr(settings, "MODERATION_SERVICE_URL", "http://moderation")
     await db_session.execute(delete(OutboxEvent))
     await db_session.commit()
@@ -272,7 +279,9 @@ async def test_delete_emits_event_to_moderation(client, product, db_session, mon
     assert "date" in payload
 
 
-async def test_delete_emits_product_deleted_to_b2c(client, product, db_session, monkeypatch):
+async def test_delete_emits_product_deleted_to_b2c(
+    client, product, db_session, monkeypatch
+):
     monkeypatch.setattr(settings, "B2C_SERVICE_URL", "http://b2c")
     await db_session.execute(delete(OutboxEvent))
     await db_session.commit()
@@ -349,6 +358,7 @@ async def test_deleted_product_not_in_seller_list(client, product_factory, db_se
 # Тест 1: MODERATED — полный payload с SKU и cost_price, blocking_reason=null
 # ──────────────────────────────────────────────
 
+
 @pytest.fixture
 async def sku_factory(db_session, test_context):
     async def _factory(product: Product, cost_price: int | None = 500) -> SKU:
@@ -406,6 +416,7 @@ async def test_get_moderated_product_returns_full_payload(
 # Тест 2: BLOCKED — blocking_reason_id и moderator_comment в ответе
 # ──────────────────────────────────────────────
 
+
 async def test_get_blocked_product_returns_blocking_reason_and_field_reports(
     client, test_context, product_factory
 ):
@@ -431,6 +442,7 @@ async def test_get_blocked_product_returns_blocking_reason_and_field_reports(
 # ──────────────────────────────────────────────
 # Тест 3: чужой товар → 404 (не 403)
 # ──────────────────────────────────────────────
+
 
 async def test_get_others_product_returns_404(client, db_session, test_context):
     other_seller = Seller(
@@ -472,6 +484,7 @@ async def test_get_others_product_returns_404(client, db_session, test_context):
 # ──────────────────────────────────────────────
 # Тест 4: несуществующий ID → 404
 # ──────────────────────────────────────────────
+
 
 async def test_get_nonexistent_returns_404(client, test_context):
     response = await client.get(f"/api/v1/products/{uuid4()}")

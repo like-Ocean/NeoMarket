@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.dependencies import require_b2c_key
 from schemas.product import (
-    ProductPublicResponse, ProductPublicShortResponse,
-    ProductPublicPaginatedResponse, ProductBatchRequest
+    ProductPublicResponse,
+    ProductPublicShortResponse,
+    ProductPublicPaginatedResponse,
+    ProductBatchRequest,
 )
 from schemas.sku import SKUPublicResponse
 from services import public_service, product_service
@@ -27,12 +29,15 @@ async def get_products_public(
     sort: str = Query("created_desc", description="Сортировка"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     return await public_service.get_products_public(
-        db=db, limit=limit, offset=offset,
+        db=db,
+        limit=limit,
+        offset=offset,
         category_id=category_id,
-        search=search, min_price=min_price,
+        search=search,
+        min_price=min_price,
         max_price=max_price,
         seller_id=seller_id,
         sort=sort,
@@ -40,15 +45,14 @@ async def get_products_public(
 
 
 @public_router.get("/products/{product_id}", response_model=ProductPublicResponse)
-async def get_product_public(
-    product_id: UUID, db: AsyncSession = Depends(get_db)
-):
+async def get_product_public(product_id: UUID, db: AsyncSession = Depends(get_db)):
     product = await public_service.get_product_by_id_public(db, product_id)
     if not product:
         from fastapi import HTTPException, status
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Товар не найден"
+            detail={"code": "NOT_FOUND", "message": "Товар не найден"},
         )
     return product
 
@@ -61,11 +65,13 @@ async def get_products_public_batch(
     return await public_service.get_products_public_batch(db, data.product_ids)
 
 
-@public_router.get("/products/{product_id}/similar", response_model=list[ProductPublicShortResponse])
+@public_router.get(
+    "/products/{product_id}/similar", response_model=list[ProductPublicShortResponse]
+)
 async def get_similar_products_public(
     product_id: UUID,
     limit: int = Query(10, ge=1, le=50, description="Количество похожих товаров"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     return await product_service.get_similar_products(db, product_id, limit)
 
@@ -78,8 +84,9 @@ async def get_sku_public(
     sku = await public_service.get_sku_by_id_public(db, sku_id)
     if not sku:
         from fastapi import HTTPException, status
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="SKU не найден"
+            detail={"code": "NOT_FOUND", "message": "SKU не найден"},
         )
     return sku

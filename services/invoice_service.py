@@ -20,22 +20,24 @@ async def get_invoice_by_id(db: AsyncSession, invoice_id, seller_id=None) -> Inv
     if not invoice:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Накладная не найдена",
+            detail={"code": "NOT_FOUND", "message": "Накладная не найдена"},
         )
 
     if seller_id is not None and invoice.seller_id != seller_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Накладная не найдена",
+            detail={"code": "NOT_FOUND", "message": "Накладная не найдена"},
         )
 
     return invoice
 
 
 async def get_invoices(
-    db: AsyncSession, seller_id,
-    limit: int = 20, offset: int = 0,
-    status: str | None = None
+    db: AsyncSession,
+    seller_id,
+    limit: int = 20,
+    offset: int = 0,
+    status: str | None = None,
 ) -> dict:
     count_query = select(func.count(Invoice.id)).where(Invoice.seller_id == seller_id)
     if status:
@@ -60,11 +62,16 @@ async def get_invoices(
     }
 
 
-async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) -> Invoice:
+async def create_invoice(
+    db: AsyncSession, seller: Seller, data: InvoiceCreate
+) -> Invoice:
     if not data.items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Накладная должна содержать хотя бы одну позицию",
+            detail={
+                "code": "BAD_REQUEST",
+                "message": "Накладная должна содержать хотя бы одну позицию",
+            },
         )
 
     for item in data.items:
@@ -77,7 +84,7 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {item.sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {item.sku_id} не найден"},
             )
 
         product_result = await db.execute(
@@ -87,17 +94,20 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {item.sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {item.sku_id} не найден"},
             )
         if product.seller_id != seller.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Нет доступа",
+                detail={"code": "FORBIDDEN", "message": "Нет доступа"},
             )
         if product.status != ProductStatus.MODERATED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="SKU товара не прошел модерацию",
+                detail={
+                    "code": "BAD_REQUEST",
+                    "message": "SKU товара не прошел модерацию",
+                },
             )
 
     invoice = Invoice(
@@ -108,37 +118,39 @@ async def create_invoice(db: AsyncSession, seller: Seller, data: InvoiceCreate) 
     await db.flush()
 
     for item in data.items:
-        db.add(InvoiceItem(
-            invoice_id=invoice.id,
-            sku_id=item.sku_id,
-            quantity=item.quantity,
-        ))
+        db.add(
+            InvoiceItem(
+                invoice_id=invoice.id,
+                sku_id=item.sku_id,
+                quantity=item.quantity,
+            )
+        )
 
     await db.commit()
-    
+
     return await get_invoice_by_id(db, invoice.id)
 
 
 async def accept_invoice(
-    db: AsyncSession, invoice_id,
-    seller: Seller, data: InvoiceAcceptRequest | None = None
+    db: AsyncSession,
+    invoice_id,
+    seller: Seller,
+    data: InvoiceAcceptRequest | None = None,
 ) -> Invoice:
     invoice = await get_invoice_by_id(db, invoice_id, seller_id=seller.id)
     if invoice.status == InvoiceStatus.ACCEPTED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Накладная уже принята",
+            detail={"code": "CONFLICT", "message": "Накладная уже принята"},
         )
 
     for item in invoice.items:
-        sku_result = await db.execute(
-            select(SKU).where(SKU.id == item.sku_id)
-        )
+        sku_result = await db.execute(select(SKU).where(SKU.id == item.sku_id))
         sku = sku_result.scalar_one_or_none()
         if not sku:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SKU {item.sku_id} не найден",
+                detail={"code": "NOT_FOUND", "message": f"SKU {item.sku_id} не найден"},
             )
 
         sku.active_quantity += item.quantity
@@ -155,9 +167,9 @@ async def delete_invoice(db: AsyncSession, invoice_id, seller: Seller):
     if invoice.status == InvoiceStatus.ACCEPTED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя удалить принятую накладную",
+            detail={"code": "CONFLICT", "message": "Нельзя удалить принятую накладную"},
         )
 
     await db.delete(invoice)
-    
+
     await db.commit()

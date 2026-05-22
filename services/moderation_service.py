@@ -11,7 +11,9 @@ from services.outbox_service import add_outbox_event
 from core.config import settings
 
 
-async def handle_moderation_event(db: AsyncSession, data: ModerationEventRequest) -> None:
+async def handle_moderation_event(
+    db: AsyncSession, data: ModerationEventRequest
+) -> None:
     result = await db.execute(
         select(ProcessedEvent).where(
             ProcessedEvent.sender_service == "moderation",
@@ -27,7 +29,10 @@ async def handle_moderation_event(db: AsyncSession, data: ModerationEventRequest
     )
     product = product_result.scalar_one_or_none()
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "Товар не найден"},
+        )
 
     if data.event_type == "MODERATED":
         product.status = ProductStatus.MODERATED
@@ -59,10 +64,12 @@ async def handle_moderation_event(db: AsyncSession, data: ModerationEventRequest
             },
         )
 
-    db.add(ProcessedEvent(
-        sender_service="moderation",
-        idempotency_key=data.idempotency_key,
-        response_cached=json.dumps({"accepted": True}, ensure_ascii=False),
-    ))
+    db.add(
+        ProcessedEvent(
+            sender_service="moderation",
+            idempotency_key=data.idempotency_key,
+            response_cached=json.dumps({"accepted": True}, ensure_ascii=False),
+        )
+    )
 
     await db.commit()
