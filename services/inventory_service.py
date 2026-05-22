@@ -10,10 +10,7 @@ from services import outbox_service
 from core.config import settings
 
 
-async def reserve(
-    db: AsyncSession, idempotency_key: UUID,
-    order_id: UUID, items: list[tuple]
-) -> dict:
+async def reserve(db: AsyncSession, idempotency_key: UUID, order_id: UUID, items: list[tuple]) -> dict:
     existing_result = await db.execute(
         select(ProcessedEvent).where(
             ProcessedEvent.sender_service == "inventory",
@@ -37,10 +34,16 @@ async def reserve(
             }
         }
 
+    aggregated: dict[UUID, int] = {}
+    for sku_id, qty in items:
+        if qty <= 0:
+            continue
+        aggregated[sku_id] = aggregated.get(sku_id, 0) + qty
+
     failed_items: list[dict] = []
     sku_by_id: dict[UUID, SKU] = {}
 
-    for sku_id, qty in items:
+    for sku_id, qty in aggregated.items():
         result = await db.execute(
             select(SKU).where(SKU.id == sku_id).with_for_update()
         )
@@ -71,7 +74,7 @@ async def reserve(
             },
         )
 
-    for sku_id, qty in items:
+    for sku_id, qty in aggregated.items():
         sku = sku_by_id[sku_id]
         sku.active_quantity -= qty
         sku.reserved_quantity += qty
