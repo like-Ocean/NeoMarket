@@ -179,13 +179,13 @@ async def update_sku(db: AsyncSession, sku_id, seller: Seller, data: SKUUpdate) 
     old_status = product.status
 
     payload = data.model_dump(exclude_unset=True)
-    characteristics = payload.pop("characteristics", None)
+    payload.pop("characteristics", None)
     for field, value in payload.items():
         setattr(sku, field, value)
 
-    if characteristics is not None:
+    if data.characteristics is not None:
         sku.characteristics.clear()
-        for characteristic in characteristics:
+        for characteristic in data.characteristics:
             db.add(SKUCharacteristic(
                 sku_id=sku.id,
                 name=characteristic.name,
